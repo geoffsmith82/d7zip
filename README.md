@@ -1,22 +1,23 @@
-    7-zip Delphi API
+# 7-zip Delphi API
 
 This API use the 7-zip dll (7z.dll) to read and write all 7-zip supported archive formats.
 
-- Autor: Henri Gourvest <hgourvest@progdigy.com>
-- Licence: MPL1.1
-- Date: 15/04/2009
-- Version: 1.1
+* Autor: Henri Gourvest <hgourvest@progdigy.com>
+* Licence: MPL1.1
+* Date: 15/04/2009
+* Version: 1.1
 Reading archive:
 Extract to path:
 
+```pascal
  with CreateInArchive(CLSID_CFormatZip) do
  begin
    OpenFile('c:\test.zip');
    ExtractTo('c:\test');
  end;
-
-Get file list:
-
+```
+### Get file list:
+```Pascal
  with CreateInArchive(CLSID_CFormat7z) do
  begin
    OpenFile('c:\test.7z');
@@ -24,9 +25,9 @@ Get file list:
     if not ItemIsFolder[i] then
       Writeln(ItemPath[i]);
  end;
-
-Extract to stream
-
+```
+### Extract to stream
+```Pascal
  with CreateInArchive(CLSID_CFormat7z) do
  begin
    OpenFile('c:\test.7z');
@@ -34,9 +35,9 @@ Extract to stream
      if not ItemIsFolder[i] then
        ExtractItem(i, stream, false);
  end;
-
-Extract "n" Items
-
+```
+### Extract "n" Items
+```Pascal
 function GetStreamCallBack(sender: Pointer; index: Cardinal;
   var outStream: ISequentialOutStream): HRESULT; stdcall;
 begin
@@ -60,18 +61,18 @@ begin
     ExtractItems(@items, Length(items), false, nil, GetStreamCallBack);
   end;
 end;
-
-Open stream
-
+```
+### Open stream
+```Pascal
  with CreateInArchive(CLSID_CFormatZip) do
  begin
    OpenStream(T7zStream.Create(TFileStream.Create('c:\test.zip', fmOpenRead), soOwned));
    OpenStream(aStream, soReference);
    ...
  end;
-
-Progress bar
-
+```
+### Progress bar
+```Pascal
  function ProgressCallback(sender: Pointer; total: boolean; value: int64): HRESULT; stdcall;
  begin
    if total then
@@ -89,9 +90,9 @@ Progress bar
      ...
    end;
  end;
-
-Password
-
+```
+### Password
+```Pascal
  function PasswordCallback(sender: Pointer; var password: WideString): HRESULT; stdcall;
  begin
    // call a dialog box ...
@@ -111,9 +112,9 @@ Password
      ...
    end;
  end;
-
-Writing archive
-
+```
+### Writing archive
+```Pascal
  procedure TMainForm.ExtractAllClick(Sender: TObject);
  var
    Arch: I7zOutArchive;
@@ -138,4 +139,4 @@ Writing archive
    // or a stream
    Arch.SaveToStream(aStream);
  end;
-
+```
