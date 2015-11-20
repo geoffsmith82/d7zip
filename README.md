@@ -6,8 +6,9 @@ This API use the 7-zip dll (7z.dll) to read and write all 7-zip supported archiv
 * Licence: MPL1.1
 * Date: 15/04/2009
 * Version: 1.1
-Reading archive:
-Extract to path:
+  
+## Reading archive:
+### Extract to path:
 
 ```pascal
  with CreateInArchive(CLSID_CFormatZip) do
