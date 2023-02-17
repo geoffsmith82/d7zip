@@ -1,11 +1,55 @@
 # 7-zip Delphi API
 
-This API use the 7-zip dll (7z.dll) to read and write all 7-zip supported archive formats.
-
-* Autor: Henri Gourvest <hgourvest@progdigy.com>
+* Author: Henri Gourvest <hgourvest@progdigy.com>
 * Licence: MPL1.1
 * Date: 15/04/2009
 * Version: 1.1
+
+This API use the 7-zip dll (7z.dll) to read and write all 7-zip supported archive formats.  According to the documentation these include
+ - zip
+ - bz2
+ - rar
+ - arj
+ - z
+ - lzh
+ - 7z
+ - cab
+ - nsis
+ - lzma
+ - lzma86
+ - xz
+ - ppmd
+ - squashFS
+ - cramFS
+ - apm
+ - mslz
+ - flv
+ - swf
+ - swfc
+ - ntfs
+ - fat
+ - mbr
+ - vhd
+ - pe
+ - elf
+ - macho
+ - udf
+ - xar
+ - mub
+ - hfs
+ - dmg
+ - compound doc
+ - wim
+ - iso
+ - bkf
+ - chm
+ - split
+ - rpm
+ - deb
+ - cpio
+ - tar
+ - gzip
+
   
 ## Reading archive:
 ### Extract to path:
