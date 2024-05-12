@@ -654,7 +654,7 @@ end;
 procedure RINOK(const hr: HRESULT);
 begin
   if hr <> S_OK then
-    raise Exception.Create(SysErrorMessage(hr));
+    raise Exception.Create(SysErrorMessage(Cardinal(hr)));
 end;
 
 procedure SetCardinalProperty(arch: I7zOutArchive; const name: UnicodeString; card: Cardinal);
