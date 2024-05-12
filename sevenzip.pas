@@ -1109,24 +1109,34 @@ function T7zInArchive.GetStream(index: Cardinal;
 var
   path: string;
 begin
-  if askExtractMode = kExtract then
-    if FStream <> nil then
-      outStream := T7zStream.Create(FStream, soReference) as ISequentialOutStream else
-    if assigned(FExtractCallback) then
-    begin
-      Result := FExtractCallBack(FExtractSender, index, outStream);
-      Exit;
-    end else
-    if FExtractPath <> '' then
-    begin
-      if not GetItemIsFolder(index) then
+  try
+    if askExtractMode = kExtract then
+      if FStream <> nil then
+        outStream := T7zStream.Create(FStream, soReference) as ISequentialOutStream else
+      if assigned(FExtractCallback) then
       begin
-        path := FExtractPath + GetItemPath(index);
-        ForceDirectories(ExtractFilePath(path));
-        outStream := T7zStream.Create(TFileStream.Create(path, fmCreate), soOwned);
+        Result := FExtractCallBack(FExtractSender, index, outStream);
+        Exit;
+      end else
+      if FExtractPath <> '' then
+      begin
+        if not GetItemIsFolder(index) then
+        begin
+          path := FExtractPath + GetItemPath(index);
+          ForceDirectories(ExtractFilePath(path));
+          outStream := T7zStream.Create(TFileStream.Create(path, fmCreate), soOwned);
+        end;
       end;
-    end;
-  Result := S_OK;
+    Result := S_OK;
+  except
+    // We must not throw an Delphi exception, because 7z.dll cannot handle it
+    // (the unhandled Delphi Exception will be forwarded as 0x0eedfade and crashes
+    // the calling process without possibility of recovery).
+    on E: EAbort do
+      Result := E_ABORT
+    else
+      Result := E_FAIL;
+  end;
 end;
 
 function T7zInArchive.PrepareOperation(askExtractMode: NAskMode): HRESULT;
@@ -1136,9 +1146,19 @@ end;
 
 function T7zInArchive.SetCompleted(completeValue: PInt64): HRESULT;
 begin
-  if Assigned(FProgressCallback) and (completeValue <> nil) then
-    Result := FProgressCallback(FProgressSender, false, completeValue^) else
-    Result := S_OK;
+  try
+    if Assigned(FProgressCallback) and (completeValue <> nil) then
+      Result := FProgressCallback(FProgressSender, false, completeValue^) else
+      Result := S_OK;
+  except
+    // We must not throw an Delphi exception, because 7z.dll cannot handle it
+    // (the unhandled Delphi Exception will be forwarded as 0x0eedfade and crashes
+    // the calling process without possibility of recovery).
+    on E: EAbort do
+      Result := E_ABORT
+    else
+      Result := E_FAIL;
+  end;
 end;
 
 function T7zInArchive.SetCompleted(files, bytes: PInt64): HRESULT;
@@ -1154,9 +1174,19 @@ end;
 
 function T7zInArchive.SetTotal(total: Int64): HRESULT;
 begin
-  if Assigned(FProgressCallback) then
-    Result := FProgressCallback(FProgressSender, true, total) else
-    Result := S_OK;
+  try
+    if Assigned(FProgressCallback) then
+      Result := FProgressCallback(FProgressSender, true, total) else
+      Result := S_OK;
+  except
+    // We must not throw an Delphi exception, because 7z.dll cannot handle it
+    // (the unhandled Delphi Exception will be forwarded as 0x0eedfade and crashes
+    // the calling process without possibility of recovery).
+    on E: EAbort do
+      Result := E_ABORT
+    else
+      Result := E_FAIL;
+  end;
 end;
 
 function T7zInArchive.SetTotal(files, bytes: PInt64): HRESULT;
@@ -1168,22 +1198,40 @@ function T7zInArchive.CryptoGetTextPassword(var password: TBStr): HRESULT;
 var
   wpass: UnicodeString;
 begin
-  if FPasswordIsDefined then
-  begin
-    password := SysAllocString(PWideChar(FPassword));
-    Result := S_OK;
-  end else
-  if Assigned(FPasswordCallback) then
-  begin
-    Result := FPasswordCallBack(FPasswordSender, wpass);
-    if Result = S_OK then
+  try
+    if FPasswordIsDefined then
     begin
-      password := SysAllocString(PWideChar(wpass));
-      FPasswordIsDefined := True;
-      FPassword := wpass;
-    end;
-  end else
-    Result := S_FALSE;
+      password := SysAllocString(PWideChar(FPassword));
+      if password = nil then
+        Result := E_OUTOFMEMORY
+      else
+        Result := S_OK;
+    end else
+    if Assigned(FPasswordCallback) then
+    begin
+      Result := FPasswordCallBack(FPasswordSender, wpass);
+      if Result = S_OK then
+      begin
+        password := SysAllocString(PWideChar(wpass));
+        if password = nil then
+        begin
+          Result := E_OUTOFMEMORY;
+          Exit;
+        end;
+        FPasswordIsDefined := True;
+        FPassword := wpass;
+      end;
+    end else
+      Result := S_FALSE;
+  except
+    // We must not throw an Delphi exception, because 7z.dll cannot handle it
+    // (the unhandled Delphi Exception will be forwarded as 0x0eedfade and crashes
+    // the calling process without possibility of recovery).
+    on E: EAbort do
+      Result := E_ABORT
+    else
+      Result := E_FAIL;
+  end;
 end;
 
 function T7zInArchive.GetProperty(propID: PROPID;
@@ -1347,9 +1395,19 @@ end;
 
 function T7zStream.GetSize(size: PInt64): HRESULT;
 begin
-  if size <> nil then
-    size^ := FStream.Size;
-  Result := S_OK;
+  try
+    if size <> nil then
+      size^ := FStream.Size;
+    Result := S_OK;
+  except
+    // We must not throw an Delphi exception, because 7z.dll cannot handle it
+    // (the unhandled Delphi Exception will be forwarded as 0x0eedfade and crashes
+    // the calling process without possibility of recovery).
+    on E: EAbort do
+      Result := E_ABORT
+    else
+      Result := E_FAIL;
+  end;
 end;
 
 function T7zStream.Read(data: Pointer; size: Cardinal;
@@ -1357,25 +1415,55 @@ function T7zStream.Read(data: Pointer; size: Cardinal;
 var
   len: integer;
 begin
-  len := FStream.Read(data^, size);
-  if processedSize <> nil then
-    processedSize^ := len;
-  Result := S_OK;
+  try
+    len := FStream.Read(data^, size);
+    if processedSize <> nil then
+      processedSize^ := len;
+    Result := S_OK;
+  except
+    // We must not throw an Delphi exception, because 7z.dll cannot handle it
+    // (the unhandled Delphi Exception will be forwarded as 0x0eedfade and crashes
+    // the calling process without possibility of recovery).
+    on E: EAbort do
+      Result := E_ABORT
+    else
+      Result := E_FAIL;
+  end;
 end;
 
 function T7zStream.Seek(offset: Int64; seekOrigin: Cardinal;
   newPosition: PInt64): HRESULT;
 begin
-  FStream.Seek(offset, TSeekOrigin(seekOrigin));
-  if newPosition <> nil then
-    newPosition^ := FStream.Position;
-  Result := S_OK;
+  try
+    FStream.Seek(offset, TSeekOrigin(seekOrigin));
+    if newPosition <> nil then
+      newPosition^ := FStream.Position;
+    Result := S_OK;
+  except
+    // We must not throw an Delphi exception, because 7z.dll cannot handle it
+    // (the unhandled Delphi Exception will be forwarded as 0x0eedfade and crashes
+    // the calling process without possibility of recovery).
+    on E: EAbort do
+      Result := E_ABORT
+    else
+      Result := E_FAIL;
+  end;
 end;
 
 function T7zStream.SetSize(newSize: Int64): HRESULT;
 begin
-  FStream.Size := newSize;
-  Result := S_OK;
+  try
+    FStream.Size := newSize;
+    Result := S_OK;
+  except
+    // We must not throw an Delphi exception, because 7z.dll cannot handle it
+    // (the unhandled Delphi Exception will be forwarded as 0x0eedfade and crashes
+    // the calling process without possibility of recovery).
+    on E: EAbort do
+      Result := E_ABORT
+    else
+      Result := E_FAIL;
+  end;
 end;
 
 function T7zStream.Write(data: Pointer; size: Cardinal;
@@ -1383,10 +1471,20 @@ function T7zStream.Write(data: Pointer; size: Cardinal;
 var
   len: integer;
 begin
-  len := FStream.Write(data^, size);
-  if processedSize <> nil then
-    processedSize^ := len;
-  Result := S_OK;
+  try
+    len := FStream.Write(data^, size);
+    if processedSize <> nil then
+      processedSize^ := len;
+    Result := S_OK;
+  except
+    // We must not throw an Delphi exception, because 7z.dll cannot handle it
+    // (the unhandled Delphi Exception will be forwarded as 0x0eedfade and crashes
+    // the calling process without possibility of recovery).
+    on E: EAbort do
+      Result := E_ABORT
+    else
+      Result := E_FAIL;
+  end;
 end;
 
 type
@@ -1529,13 +1627,28 @@ end;
 function T7zOutArchive.CryptoGetTextPassword2(passwordIsDefined: PInteger;
   var password: TBStr): HRESULT;
 begin
-  if FPassword <> '' then
-  begin
-   passwordIsDefined^ := 1;
-   password := SysAllocString(PWideChar(FPassword));
-  end else
-    passwordIsDefined^ := 0;
-  Result := S_OK;
+  try
+    if FPassword <> '' then
+    begin
+     passwordIsDefined^ := 1;
+     password := SysAllocString(PWideChar(FPassword));
+     if password = nil then
+     begin
+       Result := E_OUTOFMEMORY;
+       Exit;
+     end;
+    end else
+      passwordIsDefined^ := 0;
+    Result := S_OK;
+  except
+    // We must not throw an Delphi exception, because 7z.dll cannot handle it
+    // (the unhandled Delphi Exception will be forwarded as 0x0eedfade and crashes
+    // the calling process without possibility of recovery).
+    on E: EAbort do
+      Result := E_ABORT
+    else
+      Result := E_FAIL;
+  end;
 end;
 
 destructor T7zOutArchive.Destroy;
@@ -1557,39 +1670,49 @@ function T7zOutArchive.GetProperty(index: Cardinal; propID: PROPID;
 var
   item: T7zBatchItem;
 begin
-  item := T7zBatchItem(FBatchList[index]);
-  case propID of
-    kpidAttributes:
-      begin
-        TPropVariant(Value).vt := VT_UI4;
-        TPropVariant(Value).ulVal := item.Attributes;
-      end;
-    kpidLastWriteTime:
-      begin
-        TPropVariant(value).vt := VT_FILETIME;
-        TPropVariant(value).filetime := item.LastWriteTime;
-      end;
-    kpidPath:
-      begin
-        if item.Path <> '' then
-          value := item.Path;
-      end;
-    kpidIsFolder: Value := item.IsFolder;
-    kpidSize:
-      begin
-        TPropVariant(Value).vt := VT_UI8;
-        TPropVariant(Value).uhVal.QuadPart := item.Size;
-      end;
-    kpidCreationTime:
-      begin
-        TPropVariant(value).vt := VT_FILETIME;
-        TPropVariant(value).filetime := item.CreationTime;
-      end;
-    kpidIsAnti: value := item.IsAnti;
-  else
-   // beep(0,0);
+  try
+    item := T7zBatchItem(FBatchList[index]);
+    case propID of
+      kpidAttributes:
+        begin
+          TPropVariant(Value).vt := VT_UI4;
+          TPropVariant(Value).ulVal := item.Attributes;
+        end;
+      kpidLastWriteTime:
+        begin
+          TPropVariant(value).vt := VT_FILETIME;
+          TPropVariant(value).filetime := item.LastWriteTime;
+        end;
+      kpidPath:
+        begin
+          if item.Path <> '' then
+            value := item.Path;
+        end;
+      kpidIsFolder: Value := item.IsFolder;
+      kpidSize:
+        begin
+          TPropVariant(Value).vt := VT_UI8;
+          TPropVariant(Value).uhVal.QuadPart := item.Size;
+        end;
+      kpidCreationTime:
+        begin
+          TPropVariant(value).vt := VT_FILETIME;
+          TPropVariant(value).filetime := item.CreationTime;
+        end;
+      kpidIsAnti: value := item.IsAnti;
+    else
+     // beep(0,0);
+    end;
+    Result := S_OK;
+  except
+    // We must not throw an Delphi exception, because 7z.dll cannot handle it
+    // (the unhandled Delphi Exception will be forwarded as 0x0eedfade and crashes
+    // the calling process without possibility of recovery).
+    on E: EAbort do
+      Result := E_ABORT
+    else
+      Result := E_FAIL;
   end;
-  Result := S_OK;
 end;
 
 function T7zOutArchive.GetStream(index: Cardinal;
@@ -1597,25 +1720,45 @@ function T7zOutArchive.GetStream(index: Cardinal;
 var
   item: T7zBatchItem;
 begin
-  item := T7zBatchItem(FBatchList[index]);
-  case item.SourceMode of
-    smFile: inStream := T7zStream.Create(TFileStream.Create(item.FileName, fmOpenRead or fmShareDenyNone), soOwned);
-    smStream:
-      begin
-        item.Stream.Seek(0, soFromBeginning);
-        inStream := T7zStream.Create(item.Stream);
-      end;
+  try
+    item := T7zBatchItem(FBatchList[index]);
+    case item.SourceMode of
+      smFile: inStream := T7zStream.Create(TFileStream.Create(item.FileName, fmOpenRead or fmShareDenyNone), soOwned);
+      smStream:
+        begin
+          item.Stream.Seek(0, soFromBeginning);
+          inStream := T7zStream.Create(item.Stream);
+        end;
+    end;
+    Result := S_OK;
+  except
+    // We must not throw an Delphi exception, because 7z.dll cannot handle it
+    // (the unhandled Delphi Exception will be forwarded as 0x0eedfade and crashes
+    // the calling process without possibility of recovery).
+    on E: EAbort do
+      Result := E_ABORT
+    else
+      Result := E_FAIL;
   end;
-  Result := S_OK;
 end;
 
 function T7zOutArchive.GetUpdateItemInfo(index: Cardinal; newData,
   newProperties: PInteger; indexInArchive: PCardinal): HRESULT;
 begin
-  newData^ := 1;
-  newProperties^ := 1;
-  indexInArchive^ := CArdinal(-1);
-  Result := S_OK;
+  try
+    newData^ := 1;
+    newProperties^ := 1;
+    indexInArchive^ := Cardinal(-1);
+    Result := S_OK;
+  except
+    // We must not throw an Delphi exception, because 7z.dll cannot handle it
+    // (the unhandled Delphi Exception will be forwarded as 0x0eedfade and crashes
+    // the calling process without possibility of recovery).
+    on E: EAbort do
+      Result := E_ABORT
+    else
+      Result := E_FAIL;
+  end;
 end;
 
 procedure T7zOutArchive.SaveToFile(const FileName: TFileName);
@@ -1644,9 +1787,19 @@ end;
 
 function T7zOutArchive.SetCompleted(completeValue: PInt64): HRESULT;
 begin
-  if Assigned(FProgressCallback) and (completeValue <> nil) then
-    Result := FProgressCallback(FProgressSender, false, completeValue^) else
-    Result := S_OK;
+  try
+    if Assigned(FProgressCallback) and (completeValue <> nil) then
+      Result := FProgressCallback(FProgressSender, false, completeValue^) else
+      Result := S_OK;
+  except
+    // We must not throw an Delphi exception, because 7z.dll cannot handle it
+    // (the unhandled Delphi Exception will be forwarded as 0x0eedfade and crashes
+    // the calling process without possibility of recovery).
+    on E: EAbort do
+      Result := E_ABORT
+    else
+      Result := E_FAIL;
+  end;
 end;
 
 function T7zOutArchive.SetOperationResult(
@@ -1680,19 +1833,19 @@ end;
 
 function T7zOutArchive.SetTotal(total: Int64): HRESULT;
 begin
-  if Assigned(FProgressCallback) then
-    Result := FProgressCallback(FProgressSender, true, total) else
-    Result := S_OK;
+  try
+    if Assigned(FProgressCallback) then
+      Result := FProgressCallback(FProgressSender, true, total) else
+      Result := S_OK;
+  except
+    // We must not throw an Delphi exception, because 7z.dll cannot handle it
+    // (the unhandled Delphi Exception will be forwarded as 0x0eedfade and crashes
+    // the calling process without possibility of recovery).
+    on E: EAbort do
+      Result := E_ABORT
+    else
+      Result := E_FAIL;
+  end;
 end;
 
 end.
-
-
-
-
-
-
-
-
-
-
