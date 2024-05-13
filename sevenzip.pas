@@ -13,16 +13,26 @@
 (* V1.2                                                                         *)
 (********************************************************************************)
 
+// Original code at https://code.google.com/archive/p/d7zip/
+// Uploaded to GitHub at https://github.com/danielmarschall/d7zip
+
 // Extended by Daniel Marschall, 13 May 2024
-// - https://github.com/geoffsmith82/d7zip/pull/8 : Fix Range Check Exception in RINOK()
-// - https://github.com/geoffsmith82/d7zip/pull/9 : Avoid unhandled Delphi Exceptions crashing the DLL parent process
-// - Implemented packing and unpacking of empty directories and hidden files  (currently, no pull request sent)
-// - Implemented restoring of the file attributes and modification times  (currently, no pull request sent)
+// - Added format GUID: RAR5; https://github.com/geoffsmith82/d7zip/issues/7
+// - Added format GUIDS: TE, UEFIc, UEFIs
+// - Fix Range Check Exception in RINOK(); https://github.com/geoffsmith82/d7zip/pull/8
+// - Avoid unhandled Delphi Exceptions crashing the DLL parent process; https://github.com/geoffsmith82/d7zip/pull/9
+// - Implemented packing and unpacking of empty directories and hidden files
+// - Implemented restoring of the file attributes and modification times
+
+// TODO:
+// - Check what they have done: https://github.com/zedalaye/d7zip/commit/149de16032fe461796857e5eee22c70858cdb4b9
+//                              https://github.com/search?q=d7zip&type=repositories
+//                              + Forks with useful commits?
 
 unit sevenzip;
 {$ALIGN ON}
 {$MINENUMSIZE 4}
-{$WARN SYMBOL_PLATFORM OFF}	
+{$WARN SYMBOL_PLATFORM OFF}
 
 interface
 uses SysUtils, Windows, ActiveX, Classes, Contnrs, System.IOUtils, Math;
@@ -587,7 +597,7 @@ const
   CLSID_CFormatBZ2      : TGUID = '{23170F69-40C1-278A-1000-000110020000}'; // bz2 bzip2 tbz2 tbz
   CLSID_CFormatRar      : TGUID = '{23170F69-40C1-278A-1000-000110030000}'; // rar r00
   CLSID_CFormatArj      : TGUID = '{23170F69-40C1-278A-1000-000110040000}'; // arj
-  CLSID_CFormatZ        : TGUID = '{23170F69-40C1-278A-1000-000110050000}'; // z taz
+  CLSID_CFormatZ {Lzw}  : TGUID = '{23170F69-40C1-278A-1000-000110050000}'; // z taz
   CLSID_CFormatLzh      : TGUID = '{23170F69-40C1-278A-1000-000110060000}'; // lzh lha
   CLSID_CFormat7z       : TGUID = '{23170F69-40C1-278A-1000-000110070000}'; // 7z
   CLSID_CFormatCab      : TGUID = '{23170F69-40C1-278A-1000-000110080000}'; // cab
@@ -596,6 +606,11 @@ const
   CLSID_CFormatLzma86   : TGUID = '{23170F69-40C1-278A-1000-0001100B0000}'; // lzma 86
   CLSID_CFormatXz       : TGUID = '{23170F69-40C1-278A-1000-0001100C0000}'; // xz
   CLSID_CFormatPpmd     : TGUID = '{23170F69-40C1-278A-1000-0001100D0000}'; // ppmd
+
+  CLSID_CFormatRar5     : TGUID = '{23170F69-40C1-278A-1000-000110CC0000}'; // rar r00
+  CLSID_CFormatTE       : TGUID = '{23170f69-40c1-278a-1000-000110CF0000}';
+  CLSID_CFormatUEFIc    : TGUID = '{23170f69-40c1-278a-1000-000110D00000}';
+  CLSID_CFormatUEFIs    : TGUID = '{23170f69-40c1-278a-1000-000110D10000}';
 
   CLSID_CFormatSquashFS : TGUID = '{23170F69-40C1-278A-1000-000110D20000}';
   CLSID_CFormatCramFS   : TGUID = '{23170F69-40C1-278A-1000-000110D30000}';
@@ -1424,6 +1439,7 @@ begin
     FStream := nil;
   end;
 
+  // TODO: Shouldn't this be done somewhere else? Is the flush method the correct place (if flush=finished)?
   if (FFileName<>'') and (CompareValue(FWriteTime,0)<>0) then
     TFile.SetLastWriteTime(FFilename, FWriteTime);
 
@@ -1599,7 +1615,7 @@ var
 
     if recurse then
     begin
-      if FindFirst(p + '*', faDirectory or faReadOnly or faHidden or faSysFile or faArchive, f) = 0 then
+      if FindFirst(IncludeTrailingPathDelimiter(p) + '*', faDirectory or faReadOnly or faHidden or faSysFile or faArchive, f) = 0 then
       repeat
         if (f.Name <> '.') and (f.Name <> '..') then
         begin
