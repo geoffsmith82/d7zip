@@ -21,7 +21,7 @@
 // - Added format GUIDS: TE, UEFIc, UEFIs
 // - Fix Range Check Exception in RINOK(); https://github.com/geoffsmith82/d7zip/pull/8
 // - Avoid unhandled Delphi Exceptions crashing the DLL parent process; https://github.com/geoffsmith82/d7zip/pull/9
-// - Implemented packing and unpacking of empty directories and hidden files
+// - Implemented packing and unpacking of empty directories, folders which begin with a dot, and hidden files
 // - Implemented restoring of the file attributes and modification times
 
 // TODO:
