@@ -1446,36 +1446,74 @@ var
     f: TSearchRec;
     i: integer;
     item: T7zBatchItem;
+    alsoIncludeEmptyFolders: boolean;
   begin
+    alsoIncludeEmptyFolders := false;
+    for i := 0 to willlist.Count - 1 do
+    begin
+      if willlist[i] = '*' then
+      begin
+        alsoIncludeEmptyFolders := true;
+      end;
+    end;
+
     if recurse then
     begin
-      if FindFirst(p + '*.*', faDirectory, f) = 0 then
+      if FindFirst(IncludeTrailingPathDelimiter(p) + '*', faDirectory or faReadOnly or faHidden or faSysFile or faArchive, f) = 0 then
       repeat
-        if (f.Name[1] <> '.') then
-          Traverse(IncludeTrailingPathDelimiter(p + f.Name));
+        if (f.Name <> '.') and (f.Name <> '..') then
+        begin
+          if DirectoryExists(IncludeTrailingPathDelimiter(p) + f.Name) then
+          begin
+            Traverse(IncludeTrailingPathDelimiter(p) + f.Name);
+
+            if alsoIncludeEmptyFolders then
+            begin
+              item := T7zBatchItem.Create;
+              Item.SourceMode := smFile;
+              item.Stream := nil;
+              item.FileName := IncludeTrailingPathDelimiter(p) + f.Name;
+              item.Path := copy(item.FileName, lencut, length(item.FileName) - lencut + 1);
+              if path <> '' then
+                item.Path := IncludeTrailingPathDelimiter(path) + item.Path;
+              item.CreationTime := f.FindData.ftCreationTime;
+              item.LastWriteTime := f.FindData.ftLastWriteTime;
+              item.Attributes := f.FindData.dwFileAttributes;
+              item.Size := f.Size;
+              item.IsFolder := true;
+              item.IsAnti := False;
+              item.Ownership := soOwned;
+              FBatchList.Add(item);
+            end;
+
+          end;
+        end;
       until FindNext(f) <> 0;
       SysUtils.FindClose(f);
     end;
 
     for i := 0 to willlist.Count - 1 do
     begin
-      if FindFirst(p + willlist[i], faReadOnly or faHidden or faSysFile or faArchive, f) = 0 then
+      if FindFirst(IncludeTrailingPathDelimiter(p) + willlist[i], faReadOnly or faHidden or faSysFile or faArchive, f) = 0 then
       repeat
-        item := T7zBatchItem.Create;
-        Item.SourceMode := smFile;
-        item.Stream := nil;
-        item.FileName := p + f.Name;
-        item.Path := copy(item.FileName, lencut, length(item.FileName) - lencut + 1);
-        if path <> '' then
-          item.Path := IncludeTrailingPathDelimiter(path) + item.Path;
-        item.CreationTime := f.FindData.ftCreationTime;
-        item.LastWriteTime := f.FindData.ftLastWriteTime;
-        item.Attributes := f.FindData.dwFileAttributes;
-        item.Size := f.Size;
-        item.IsFolder := false;
-        item.IsAnti := False;
-        item.Ownership := soOwned;
-        FBatchList.Add(item);
+        if (f.Name <> '.') and (f.Name <> '..') then
+        begin
+          item := T7zBatchItem.Create;
+          Item.SourceMode := smFile;
+          item.Stream := nil;
+          item.FileName := IncludeTrailingPathDelimiter(p) + f.Name;
+          item.Path := copy(item.FileName, lencut, length(item.FileName) - lencut + 1);
+          if path <> '' then
+            item.Path := IncludeTrailingPathDelimiter(path) + item.Path;
+          item.CreationTime := f.FindData.ftCreationTime;
+          item.LastWriteTime := f.FindData.ftLastWriteTime;
+          item.Attributes := f.FindData.dwFileAttributes;
+          item.Size := f.Size;
+          item.IsFolder := false;
+          item.IsAnti := False;
+          item.Ownership := soOwned;
+          FBatchList.Add(item);
+        end;
       until FindNext(f) <> 0;
       SysUtils.FindClose(f);
     end;
