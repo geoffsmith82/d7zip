@@ -21,13 +21,22 @@
 // - Added format GUIDS: TE, UEFIc, UEFIs
 // - Fix Range Check Exception in RINOK(); https://github.com/geoffsmith82/d7zip/pull/8
 // - Avoid unhandled Delphi Exceptions crashing the DLL parent process; https://github.com/geoffsmith82/d7zip/pull/9
-// - Implemented packing and unpacking of empty directories, folders which begin with a dot, and hidden files
-// - Implemented restoring of the file attributes and modification times
+// - Implemented packing of empty directories, folders which begin with a dot, and hidden files; https://github.com/geoffsmith82/d7zip/pull/10
+// - Implemented restoring of the file attributes and modification times; https://github.com/geoffsmith82/d7zip/pull/11
+// - Added ExtractItemToPath method; https://github.com/ekot1/d7zip/commit/a6e35cac4fe2306307372f7b4647a7a620d86cf8
+// - Fixed wrong method name in README.md; https://github.com/r3code/d7zip/commit/b7f067436b1259177603cf0cc6e64a80bceaa68e
 
-// TODO:
-// - Check what they have done: https://github.com/zedalaye/d7zip/commit/149de16032fe461796857e5eee22c70858cdb4b9
-//                              https://github.com/search?q=d7zip&type=repositories
-//                              + Forks with useful commits?
+// TODO: Possible changes to look closer at...
+// - Show better error message when 7z.dll can not be loaded; https://github.com/ekot1/d7zip/commit/4facb0ef8b190c129d494c9237337918b3dbeece
+// - Added SetProgressCallbackEx method to allow use of anonymous methods as callbacks; https://github.com/ekot1/d7zip/commit/d850b85a05dd58ad6ded2823a635ab28b8cb62ca
+// - Changes to match propids from 7z.dll v16.04; https://github.com/ekot1/d7zip/commit/149de16032fe461796857e5eee22c70858cdb4b9
+// - 64 bit file sizes: https://github.com/wang80919/d7zip/commit/b89d4d7a2bc26928a3e8a1de896feac1a79706ce
+// - https://github.com/wang80919/d7zip/commit/626ad160001bb62671c959e43d052bea5047e950
+//   https://github.com/wang80919/d7zip/commit/a27a324e35f17e83964db18a9db65bc90707b6da
+//   https://github.com/wang80919/d7zip/commit/1d2bdfa82bcd95c4613f775af93f23608f944cb9
+//   https://github.com/wang80919/d7zip/commit/963f2a653b652d561558e022e52006ae599301a0
+// - Add packages and add namespace to unit; https://github.com/grandchef/d7zip/commit/b043af03cd22729be5c3515e27dfba402d0251f5#diff-3eea9649c6b570534a69a6f393cf9e7e7382bf9b8e6812a687d916d575237e02
+
 
 unit sevenzip;
 {$ALIGN ON}
@@ -865,6 +874,7 @@ type
     function GetItemSize(const index: integer): Cardinal; stdcall; stdcall;
     function GetItemIsFolder(const index: integer): boolean; stdcall;
     procedure ExtractItem(const item: Cardinal; Stream: TStream; test: longbool); stdcall;
+    procedure ExtractItemToPath(const item: Cardinal; const path: string; test: longbool); stdcall;
     procedure ExtractItems(items: PCardArray; count: cardinal; test: longbool; sender: pointer; callback: T7zGetStreamCallBack); stdcall;
     procedure SetPasswordCallback(sender: Pointer; callback: T7zPasswordCallback); stdcall;
     procedure SetProgressCallback(sender: Pointer; callback: T7zProgressCallback); stdcall;
@@ -1131,6 +1141,18 @@ begin
       RINOK(FInArchive.Extract(@item, 1, 0, self as IArchiveExtractCallback));
   finally
     FStream := nil;
+  end;
+end;
+
+procedure T7zInArchive.ExtractItemToPath(const item: Cardinal; const path: string; test: longbool); stdcall;
+begin
+  FExtractPath := IncludeTrailingPathDelimiter(path);
+  try
+    if test then
+      RINOK(FInArchive.Extract(@item, 1, 1, self as IArchiveExtractCallback)) else
+      RINOK(FInArchive.Extract(@item, 1, 0, self as IArchiveExtractCallback));
+  finally
+    FExtractPath := '';
   end;
 end;
 
