@@ -28,6 +28,7 @@
 // - Changes to match propids from 7z.dll v16.04, by ekot1 (this also adds new format GUIDs); https://github.com/ekot1/d7zip/commit/149de16032fe461796857e5eee22c70858cdb4b9
 // - Added constants from ZipHandlerOut.cpp and HandlerOut.cpp; https://github.com/project-jedi/jcl/blob/master/jcl/source/windows/sevenzip.pas
 // - Readme: The source version was actually 1.2 from 2011, and not 1.1 from 2009; https://github.com/danielmarschall/d7zip/commit/18cd6d2e20e755f8a261a9195dd9aadb12ae59d0
+// - Fixed: The method in IOutStreamFinish is called OutStreamFinish, not Flush!
 
 // TODO: Possible changes to look closer at...
 // - Added SetProgressCallbackEx method to allow use of anonymous methods as callbacks; https://github.com/ekot1/d7zip/commit/d850b85a05dd58ad6ded2823a635ab28b8cb62ca
@@ -195,11 +196,12 @@ type
 //******************************************************************************
 // IStream.h
 // "23170F69-40C1-278A-0000-000300xx0000"
+// (Last checked 14 May 2024; https://github.com/mcmilk/7-Zip/blob/master/CPP/7zip/IStream.h)
 //******************************************************************************
 
   ISequentialInStream = interface(IUnknown)
   ['{23170F69-40C1-278A-0000-000300010000}']
-    function Read(data: Pointer; size: Cardinal; processedSize: PCardinal): HRESULT; stdcall;
+    function Read(data: Pointer; size: UInt32; processedSize: PUInt32): HRESULT; stdcall;
     (*
     The requirement for caller: (processedSize != NULL).
     The callee can allow (processedSize == NULL) for compatibility reasons.
@@ -224,7 +226,7 @@ type
 
   ISequentialOutStream = interface(IUnknown)
   ['{23170F69-40C1-278A-0000-000300020000}']
-    function Write(data: Pointer; size: Cardinal; processedSize: PCardinal): HRESULT; stdcall;
+    function Write(data: Pointer; size: UInt32; processedSize: PUint32): HRESULT; stdcall;
     (*
     The requirement for caller: (processedSize != NULL).
     The callee can allow (processedSize == NULL) for compatibility reasons.
@@ -242,23 +244,31 @@ type
 
   IInStream = interface(ISequentialInStream)
   ['{23170F69-40C1-278A-0000-000300030000}']
-    function Seek(offset: Int64; seekOrigin: Cardinal; newPosition: PInt64): HRESULT; stdcall;
+    function Seek(offset: Int64; seekOrigin: UInt32; newPosition: PUInt64): HRESULT; stdcall;
   end;
 
   IOutStream = interface(ISequentialOutStream)
   ['{23170F69-40C1-278A-0000-000300040000}']
-    function Seek(offset: Int64; seekOrigin: Cardinal; newPosition: PInt64): HRESULT; stdcall;
-    function SetSize(newSize: Int64): HRESULT; stdcall;
+    function Seek(offset: Int64; seekOrigin: UInt32; newPosition: PUInt64): HRESULT; stdcall;
+    function SetSize(newSize: UInt64): HRESULT; stdcall;
   end;
 
   IStreamGetSize = interface(IUnknown)
   ['{23170F69-40C1-278A-0000-000300060000}']
-    function GetSize(size: PInt64): HRESULT; stdcall;
+    function GetSize(size: PUInt64): HRESULT; stdcall;
   end;
 
   IOutStreamFinish = interface(IUnknown)
   ['{23170F69-40C1-278A-0000-000300070000}']
-    function Flush: HRESULT; stdcall;
+    // It is a misconception that the method is called Flush!
+    // It is called OutStreamFinish according to IStream.h
+    function OutStreamFinish: HRESULT; stdcall;
+  end;
+
+  IStreamGetProps = interface(IUnknown)
+  ['{23170F69-40C1-278A-0000-000300080000}']
+    function GetProps(size: PUInt64; cTime: PFileTime; aTime: PFileTime;
+      mTime: PFileTime; attrib: PUInt32): HRESULT; stdcall;
   end;
 
 //******************************************************************************
@@ -780,12 +790,12 @@ CODER_INTERFACE(ICompressSetCoderProperties, 0x21)
     FFileName: string;
     FWriteTime: TDateTime;
   protected
-    function Read(data: Pointer; size: Cardinal; processedSize: PCardinal): HRESULT; stdcall;
-    function Seek(offset: Int64; seekOrigin: Cardinal; newPosition: Pint64): HRESULT; stdcall;
-    function GetSize(size: PInt64): HRESULT; stdcall;
-    function SetSize(newSize: Int64): HRESULT; stdcall;
-    function Write(data: Pointer; size: Cardinal; processedSize: PCardinal): HRESULT; stdcall;
-    function Flush: HRESULT; stdcall;
+    function Read(data: Pointer; size: UInt32; processedSize: PUInt32): HRESULT; stdcall;
+    function Seek(offset: Int64; seekOrigin: UInt32; newPosition: PUInt64): HRESULT; stdcall;
+    function GetSize(size: PUInt64): HRESULT; stdcall;
+    function SetSize(newSize: UInt64): HRESULT; stdcall;
+    function Write(data: Pointer; size: UInt32; processedSize: PUInt32): HRESULT; stdcall;
+    function OutStreamFinish: HRESULT; stdcall;
   public
     constructor Create(Stream: TStream; Ownership: TStreamOwnership = soReference; filename: string=''; writeTime: TDateTime=0);
     destructor Destroy; override;
@@ -1759,12 +1769,12 @@ begin
   inherited;
 end;
 
-function T7zStream.Flush: HRESULT;
+function T7zStream.OutStreamFinish: HRESULT;
 begin
   Result := S_OK;
 end;
 
-function T7zStream.GetSize(size: PInt64): HRESULT;
+function T7zStream.GetSize(size: PUInt64): HRESULT;
 begin
   try
     if size <> nil then
@@ -1781,8 +1791,8 @@ begin
   end;
 end;
 
-function T7zStream.Read(data: Pointer; size: Cardinal;
-  processedSize: PCardinal): HRESULT;
+function T7zStream.Read(data: Pointer; size: UInt32;
+  processedSize: PUInt32): HRESULT;
 var
   len: integer;
 begin
@@ -1802,8 +1812,8 @@ begin
   end;
 end;
 
-function T7zStream.Seek(offset: Int64; seekOrigin: Cardinal;
-  newPosition: PInt64): HRESULT;
+function T7zStream.Seek(offset: Int64; seekOrigin: UInt32;
+  newPosition: PUInt64): HRESULT;
 begin
   try
     FStream.Seek(offset, TSeekOrigin(seekOrigin));
@@ -1821,7 +1831,7 @@ begin
   end;
 end;
 
-function T7zStream.SetSize(newSize: Int64): HRESULT;
+function T7zStream.SetSize(newSize: UInt64): HRESULT;
 begin
   try
     FStream.Size := newSize;
@@ -1837,8 +1847,8 @@ begin
   end;
 end;
 
-function T7zStream.Write(data: Pointer; size: Cardinal;
-  processedSize: PCardinal): HRESULT;
+function T7zStream.Write(data: Pointer; size: UInt32;
+  processedSize: PUInt32): HRESULT;
 var
   len: integer;
 begin
