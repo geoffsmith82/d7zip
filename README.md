@@ -6,7 +6,7 @@
 * Version: 1.2
 * [Original source at Google Code](https://code.google.com/archive/p/d7zip/source/default/commits)
 
-This API use the 7-zip dll (7z.dll) to read and write all 7-zip supported archive formats.  The latest 32-bit and 64-bit version of the 7z.dll is included in the repository (currently 22.01). According to the documentation, file formats listed below are supported, although many may only support decompression/extraction and not creation/compression.
+This API use the 7-zip dll (7z.dll) to read and write all 7-zip supported archive formats.  The latest 32-bit and 64-bit version of the 7z.dll is included in the repository (currently 24.4). According to the documentation, file formats listed below are supported, although many may only support decompression/extraction and not creation/compression.
  - zip
  - bz2
  - rar

@@ -16,9 +16,8 @@
 // Original code at https://code.google.com/archive/p/d7zip/
 // Uploaded to GitHub at https://github.com/danielmarschall/d7zip
 
-// Extended by Daniel Marschall, 13 May 2024
+// Extended by Daniel Marschall, 14 May 2024
 // - Added format GUID: RAR5; https://github.com/geoffsmith82/d7zip/issues/7
-// - Added format GUIDS: TE, UEFIc, UEFIs
 // - Fix Range Check Exception in RINOK(); https://github.com/geoffsmith82/d7zip/pull/8
 // - Avoid unhandled Delphi Exceptions crashing the DLL parent process; https://github.com/geoffsmith82/d7zip/pull/9
 // - Implemented packing and unpacking of empty directories, folders which begin with a dot, and hidden files; https://github.com/geoffsmith82/d7zip/pull/10
@@ -26,8 +25,9 @@
 // - Added ExtractItemToPath method, by ekot1; https://github.com/ekot1/d7zip/commit/a6e35cac4fe2306307372f7b4647a7a620d86cf8
 // - Fixed wrong method name in README.md; https://github.com/r3code/d7zip/commit/b7f067436b1259177603cf0cc6e64a80bceaa68e
 // - Show better error message when 7z.dll can not be loaded, by ekot1; https://github.com/ekot1/d7zip/commit/4facb0ef8b190c129d494c9237337918b3dbeece
-// - Changes to match propids from 7z.dll v16.04, by ekot1; https://github.com/ekot1/d7zip/commit/149de16032fe461796857e5eee22c70858cdb4b9
+// - Changes to match propids from 7z.dll v16.04, by ekot1 (this also adds new format GUIDs); https://github.com/ekot1/d7zip/commit/149de16032fe461796857e5eee22c70858cdb4b9
 // - Added constants from ZipHandlerOut.cpp and HandlerOut.cpp; https://github.com/project-jedi/jcl/blob/master/jcl/source/windows/sevenzip.pas
+// - Readme: The source version was actually 1.2 from 2011, and not 1.1 from 2009; https://github.com/danielmarschall/d7zip/commit/18cd6d2e20e755f8a261a9195dd9aadb12ae59d0
 
 // TODO: Possible changes to look closer at...
 // - Added SetProgressCallbackEx method to allow use of anonymous methods as callbacks; https://github.com/ekot1/d7zip/commit/d850b85a05dd58ad6ded2823a635ab28b8cb62ca
