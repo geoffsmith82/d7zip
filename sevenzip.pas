@@ -30,10 +30,11 @@
 // - Readme: The source version was actually 1.2 from 2011, and not 1.1 from 2009; https://github.com/danielmarschall/d7zip/commit/18cd6d2e20e755f8a261a9195dd9aadb12ae59d0
 // - Fixed: The method in IOutStreamFinish is called OutStreamFinish, not Flush!
 // - Updated some interface definitions (Cardinal=>UInt32, Int64 sometimes UInt32, etc.); partially added missing interfaces from the 7zip source headers
+// - Extended own interfaces to support 64 bit file sizes: https://github.com/wang80919/d7zip/commit/b89d4d7a2bc26928a3e8a1de896feac1a79706ce (and set new GUIDs because the signatures changed!)
+// - Added GetItemCompressedSize
 
 // TODO: Possible changes to look closer at...
 // - Added SetProgressCallbackEx method to allow use of anonymous methods as callbacks; https://github.com/ekot1/d7zip/commit/d850b85a05dd58ad6ded2823a635ab28b8cb62ca
-// - 64 bit file sizes: https://github.com/wang80919/d7zip/commit/b89d4d7a2bc26928a3e8a1de896feac1a79706ce (does this really work? We cannot change an interface!?)
 // - https://github.com/wang80919/d7zip/commit/626ad160001bb62671c959e43d052bea5047e950
 //   https://github.com/wang80919/d7zip/commit/a27a324e35f17e83964db18a9db65bc90707b6da
 //   https://github.com/wang80919/d7zip/commit/1d2bdfa82bcd95c4613f775af93f23608f944cb9
@@ -1020,7 +1021,6 @@ CODER_INTERFACE(ICompressSetCoderProperties, 0x21)
 
 {$ENDREGION}
 
-
 //////////////////////
 // It's for DLL file
 //NMethodPropID::
@@ -1037,6 +1037,8 @@ CODER_INTERFACE(ICompressSetCoderProperties, 0x21)
     kDigestSize
   );
 
+{$REGION 'Classes'}
+
 //******************************************************************************
 // CLASSES
 //******************************************************************************
@@ -1047,14 +1049,15 @@ CODER_INTERFACE(ICompressSetCoderProperties, 0x21)
   T7zProgressCallback = function(sender: Pointer; total: boolean; value: int64): HRESULT; stdcall;
 
   I7zInArchive = interface
-  ['{022CF785-3ECE-46EF-9755-291FA84CC6C9}']
+  ['{018f78e2-08c6-7334-80c7-be202204c546}']
     procedure OpenFile(const filename: string); stdcall;
     procedure OpenStream(stream: IInStream); stdcall;
     procedure Close; stdcall;
     function GetNumberOfItems: Cardinal; stdcall;
     function GetItemPath(const index: integer): UnicodeString; stdcall;
     function GetItemName(const index: integer): UnicodeString; stdcall;
-    function GetItemSize(const index: integer): Cardinal; stdcall;
+    function GetItemSize(const index: integer): Int64; stdcall;
+    function GetItemCompressedSize(const index: integer): Int64; stdcall;
     function GetItemIsFolder(const index: integer): boolean; stdcall;
     function GetInArchive: IInArchive;
     procedure ExtractItem(const item: Cardinal; Stream: TStream; test: longbool); stdcall;
@@ -1071,13 +1074,14 @@ CODER_INTERFACE(ICompressSetCoderProperties, 0x21)
     property NumberOfItems: Cardinal read GetNumberOfItems;
     property ItemPath[const index: integer]: UnicodeString read GetItemPath;
     property ItemName[const index: integer]: UnicodeString read GetItemName;
-    property ItemSize[const index: integer]: Cardinal read GetItemSize;
+    property ItemSize[const index: integer]: Int64 read GetItemSize;
+    property ItemCompressedSize[const index: integer]: Int64 read GetItemCompressedSize;
     property ItemIsFolder[const index: integer]: boolean read GetItemIsFolder;
     property InArchive: IInArchive read GetInArchive;
   end;
 
   I7zOutArchive = interface
-  ['{BAA9D5DC-9FF4-4382-9BFD-EC9065BD0125}']
+  ['{018f78e2-08c6-7530-8865-95ca0929af15}']
     procedure AddStream(Stream: TStream; Ownership: TStreamOwnership; Attributes: Cardinal;
       CreationTime, LastWriteTime: TFileTime; const Path: UnicodeString;
       IsFolder, IsAnti: boolean); stdcall;
@@ -1124,6 +1128,11 @@ type
   TZipCompressionMethod = (mzCopy, mzDeflate, mzDeflate64, mzBZip2, mzLZMA, mzPPMD);
   TZipEncryptionMethod = (emAES128, emAES192, emAES256, emZIPCRYPTO);
   T7zCompressionMethod = (m7Copy, m7LZMA, m7BZip2, m7PPMd, m7Deflate, m7Deflate64);
+
+{$ENDREGION}
+
+{$REGION 'Methods'}
+
                                                                                               //  ZIP 7z GZIP BZ2
   procedure SetCompressionLevel(Arch: I7zOutArchive; level: Cardinal);                        //   X   X   X   X
   procedure SetMultiThreading(Arch: I7zOutArchive; ThreadCount: Cardinal);                    //   X   X       X
@@ -1156,6 +1165,10 @@ type
 
   function CreateInArchive(const classid: TGUID; const lib: string = '7z.dll'): I7zInArchive;
   function CreateOutArchive(const classid: TGUID; const lib: string = '7z.dll'): I7zOutArchive;
+
+{$ENDREGION}
+
+{$REGION 'Format GUIDs'}
 
 const
   CLSID_CFormatZip      : TGUID = '{23170F69-40C1-278A-1000-000110010000}'; // [OUT] zip jar xpi
@@ -1214,6 +1227,9 @@ const
   CLSID_CFormatTar      : TGUID = '{23170F69-40C1-278A-1000-000110EE0000}'; // [OUT] tar
   CLSID_CFormatGZip     : TGUID = '{23170F69-40C1-278A-1000-000110EF0000}'; // [OUT] gz gzip tgz tpz
 
+{$ENDREGION}
+
+{$REGION 'ZipHandlerOut.cpp'}
 // ZipHandlerOut.cpp
 const
   kDeflateAlgoX1 = 0 deprecated 'Use kLzAlgoX1';
@@ -1242,7 +1258,9 @@ const
   kBZip2DicSizeX1 = 100000;
   kBZip2DicSizeX3 = 500000;
   kBZip2DicSizeX5 = 900000;
+{$ENDREGION}
 
+{$REGION 'HandlerOut.cpp'}
 // HandlerOut.cpp
 const
   kLzmaAlgoX1 = 0;
@@ -1270,6 +1288,7 @@ const
   kDeflateFastBytesX1 = 32;
   kDeflateFastBytesX7 = 64;
   kDeflateFastBytesX9 = 128;
+{$ENDREGION}
 
 implementation
 
@@ -1490,7 +1509,8 @@ type
     function GetNumberOfItems: Cardinal; stdcall;
     function GetItemPath(const index: integer): UnicodeString; stdcall;
     function GetItemName(const index: integer): UnicodeString; stdcall;
-    function GetItemSize(const index: integer): Cardinal; stdcall; stdcall;
+    function GetItemSize(const index: integer): Int64; stdcall; stdcall;
+    function GetItemCompressedSize(const index: integer): Int64; stdcall; stdcall;
     function GetItemIsFolder(const index: integer): boolean; stdcall;
     procedure ExtractItem(const item: Cardinal; Stream: TStream; test: longbool); stdcall;
     procedure ExtractItemToPath(const item: Cardinal; const path: string; test: longbool); stdcall;
@@ -1583,6 +1603,7 @@ end;
 
 constructor T7zPlugin.Create(const lib: string);
 begin
+  inherited Create;
   FHandle := LoadLibrary(PChar(lib));
   if FHandle = 0 then
       RaiseLastOSError(GetLastError, Format(#13#10'Error loading library %s', [lib]));
@@ -1942,9 +1963,14 @@ begin
   Result := UnicodeString(GetItemProp(index, kpidName));
 end;
 
-function T7zInArchive.GetItemSize(const index: integer): Cardinal; stdcall;
+function T7zInArchive.GetItemSize(const index: integer): Int64; stdcall;
 begin
-  Result := Cardinal(GetItemProp(index, kpidSize));
+  Result := Int64(GetItemProp(index, kpidSize));
+end;
+
+function T7zInArchive.GetItemCompressedSize(const index: integer): Int64; stdcall;
+begin
+  Result := Int64(GetItemProp(index, kpidPackSize));
 end;
 
 function T7zInArchive.GetItemWriteTime(const index: integer): TDateTime;
@@ -2198,7 +2224,7 @@ type
     IsFolder, IsAnti: boolean;
     FileName: TFileName;
     Ownership: TStreamOwnership;
-    Size: Cardinal;
+    Size: Int64;
     destructor Destroy; override;
   end;
 
@@ -2215,6 +2241,8 @@ procedure T7zOutArchive.AddFile(const Filename: TFileName; const Path: UnicodeSt
 var
   item: T7zBatchItem;
   Handle: THandle;
+  TempSize: Int64;
+  TempSizeHi: Cardinal;
 begin
   if not FileExists(Filename) then exit;
   item := T7zBatchItem.Create;
@@ -2224,7 +2252,9 @@ begin
   item.Path := Path;
   Handle := FileOpen(Filename, fmOpenRead or fmShareDenyNone);
   GetFileTime(Handle, @item.CreationTime, nil, @item.LastWriteTime);
-  item.Size := GetFileSize(Handle, nil);
+  Int64Rec(TempSize).Lo := GetFileSize(Handle, @TempSizeHi);
+  Int64Rec(TempSize).Hi := TempSizeHi;
+  item.Size := TempSize;
   CloseHandle(Handle);
   item.Attributes := GetFileAttributes(PChar(Filename));
   item.IsFolder := false;
