@@ -26,12 +26,12 @@
 // - Fixed wrong method name in README.md; https://github.com/r3code/d7zip/commit/b7f067436b1259177603cf0cc6e64a80bceaa68e
 // - Show better error message when 7z.dll can not be loaded, by ekot1; https://github.com/ekot1/d7zip/commit/4facb0ef8b190c129d494c9237337918b3dbeece
 // - Changes to match propids from 7z.dll v16.04, by ekot1 (this also adds new format GUIDs); https://github.com/ekot1/d7zip/commit/149de16032fe461796857e5eee22c70858cdb4b9
-// - Added constants from ZipHandlerOut.cpp and HandlerOut.cpp; https://github.com/project-jedi/jcl/blob/master/jcl/source/windows/sevenzip.pas
 // - Readme: The source version was actually 1.2 from 2011, and not 1.1 from 2009; https://github.com/danielmarschall/d7zip/commit/18cd6d2e20e755f8a261a9195dd9aadb12ae59d0
 // - Fixed: The method in IOutStreamFinish is called OutStreamFinish, not Flush!
 // - Updated some interface definitions (Cardinal=>UInt32, Int64 sometimes UInt32, etc.); partially added missing interfaces from the 7zip source headers
 // - Extended own interfaces to support 64 bit file sizes: https://github.com/wang80919/d7zip/commit/b89d4d7a2bc26928a3e8a1de896feac1a79706ce (and set new GUIDs because the signatures changed!)
 // - Added GetItemCompressedSize
+// - Added LZMA2 to 7z methods (not tested)
 
 // TODO: Possible changes to look closer at...
 // - Added SetProgressCallbackEx method to allow use of anonymous methods as callbacks; https://github.com/ekot1/d7zip/commit/d850b85a05dd58ad6ded2823a635ab28b8cb62ca
@@ -1021,22 +1021,6 @@ CODER_INTERFACE(ICompressSetCoderProperties, 0x21)
 
 {$ENDREGION}
 
-//////////////////////
-// It's for DLL file
-//NMethodPropID::
-  NMethodPropID = (
-    kID,
-    kMethodName, // kName
-    kDecoder,
-    kEncoder,
-    kPackStreams,
-    kUnpackStreams,
-    kDescription,
-    kDecoderIsAssigned,
-    kEncoderIsAssigned,
-    kDigestSize
-  );
-
 {$REGION 'Classes'}
 
 //******************************************************************************
@@ -1058,6 +1042,8 @@ CODER_INTERFACE(ICompressSetCoderProperties, 0x21)
     function GetItemName(const index: integer): UnicodeString; stdcall;
     function GetItemSize(const index: integer): Int64; stdcall;
     function GetItemCompressedSize(const index: integer): Int64; stdcall;
+    function GetItemWriteTime(const index: integer): TDateTime; stdcall;
+    function GetItemAttributes(const index: integer): DWORD; stdcall;
     function GetItemIsFolder(const index: integer): boolean; stdcall;
     function GetInArchive: IInArchive;
     procedure ExtractItem(const item: Cardinal; Stream: TStream; test: longbool); stdcall;
@@ -1127,7 +1113,7 @@ CODER_INTERFACE(ICompressSetCoderProperties, 0x21)
 type
   TZipCompressionMethod = (mzCopy, mzDeflate, mzDeflate64, mzBZip2, mzLZMA, mzPPMD);
   TZipEncryptionMethod = (emAES128, emAES192, emAES256, emZIPCRYPTO);
-  T7zCompressionMethod = (m7Copy, m7LZMA, m7BZip2, m7PPMd, m7Deflate, m7Deflate64);
+  T7zCompressionMethod = (m7Copy, m7LZMA, m7BZip2, m7PPMd, m7Deflate, m7Deflate64, m7LZMA2);
 
 {$ENDREGION}
 
@@ -1229,74 +1215,15 @@ const
 
 {$ENDREGION}
 
-{$REGION 'ZipHandlerOut.cpp'}
-// ZipHandlerOut.cpp
-const
-  kDeflateAlgoX1 = 0 deprecated 'Use kLzAlgoX1';
-  kLzAlgoX1 = 0;
-  kDeflateAlgoX5 = 1 deprecated 'Use kLzAlgoX5';
-  kLzAlgoX5 = 1;
-
-  kDeflateNumPassesX1  = 1;
-  kDeflateNumPassesX7  = 3;
-  kDeflateNumPassesX9  = 10;
-
-  kNumFastBytesX1 = 32 deprecated 'Use kDeflateNumFastBytesX1';
-  kDeflateNumFastBytesX1 = 32;
-  kNumFastBytesX7 = 64 deprecated 'Use kDeflateNumFastBytesX7';
-  kDeflateNumFastBytesX7 = 64;
-  kNumFastBytesX9 = 128 deprecated 'Use kDeflateNumFastBytesX9';
-  kDeflateNumFastBytesX9 = 128;
-
-  kLzmaNumFastBytesX1 = 32;
-  kLzmaNumFastBytesX7 = 64;
-
-  kBZip2NumPassesX1 = 1;
-  kBZip2NumPassesX7 = 2;
-  kBZip2NumPassesX9 = 7;
-
-  kBZip2DicSizeX1 = 100000;
-  kBZip2DicSizeX3 = 500000;
-  kBZip2DicSizeX5 = 900000;
-{$ENDREGION}
-
-{$REGION 'HandlerOut.cpp'}
-// HandlerOut.cpp
-const
-  kLzmaAlgoX1 = 0;
-  kLzmaAlgoX5 = 1;
-
-  kLzmaDicSizeX1 = 1 shl 16;
-  kLzmaDicSizeX3 = 1 shl 20;
-  kLzmaDicSizeX5 = 1 shl 24;
-  kLzmaDicSizeX7 = 1 shl 25;
-  kLzmaDicSizeX9 = 1 shl 26;
-
-  kLzmaFastBytesX1 = 32;
-  kLzmaFastBytesX7 = 64;
-
-  kPpmdMemSizeX1 = (1 shl 22);
-  kPpmdMemSizeX5 = (1 shl 24);
-  kPpmdMemSizeX7 = (1 shl 26);
-  kPpmdMemSizeX9 = (192 shl 20);
-
-  kPpmdOrderX1 = 4;
-  kPpmdOrderX5 = 6;
-  kPpmdOrderX7 = 16;
-  kPpmdOrderX9 = 32;
-
-  kDeflateFastBytesX1 = 32;
-  kDeflateFastBytesX7 = 64;
-  kDeflateFastBytesX9 = 128;
-{$ENDREGION}
-
 implementation
 
 const
   MAXCHECK : int64 = (1 shl 20);
   ZipCompressionMethod: array[TZipCompressionMethod] of UnicodeString = ('COPY', 'DEFLATE', 'DEFLATE64', 'BZIP2', 'LZMA', 'PPMD');
   ZipEncryptionMethod: array[TZipEncryptionMethod] of UnicodeString = ('AES128', 'AES192', 'AES256', 'ZIPCRYPTO');
-  SevCompressionMethod: array[T7zCompressionMethod] of UnicodeString = ('COPY', 'LZMA', 'BZIP2', 'PPMD', 'DEFLATE', 'DEFLATE64');
+
+  // TODO: DEFLATE, DEFLATE64 are not listed in https://www.7-zip.org/7z.html . Is it really supported?
+  SevCompressionMethod: array[T7zCompressionMethod] of UnicodeString = ('COPY', 'LZMA', 'BZIP2', 'PPMD', 'DEFLATE', 'DEFLATE64', 'LZMA2');
 
 function DateTimeToFileTime(dt: TDateTime): TFileTime;
 var
@@ -1445,6 +1372,19 @@ type
     procedure CreateObject(const clsid, iid :TGUID; var obj);
   end;
 
+  NMethodPropID = (
+    kID,
+    kMethodName, // kName
+    kDecoder,
+    kEncoder,
+    kPackStreams,
+    kUnpackStreams,
+    kDescription,
+    kDecoderIsAssigned,
+    kEncoderIsAssigned,
+    kDigestSize
+  );
+
   T7zCodec = class(T7zPlugin, I7zCodec, ICompressProgressInfo)
   private
     FGetMethodProperty: function(index: Cardinal; propID: NMethodPropID; var value: OleVariant): HRESULT; stdcall;
@@ -1500,8 +1440,6 @@ type
     function GetInArchive: IInArchive;
     function GetItemProp(const Item: Cardinal; prop: PROPID): OleVariant;
   protected
-    function GetItemWriteTime(const index: integer): TDateTime;
-    function GetItemAttributes(const index: integer): DWORD;
     // I7zInArchive
     procedure OpenFile(const filename: string); stdcall;
     procedure OpenStream(stream: IInStream); stdcall;
@@ -1511,6 +1449,8 @@ type
     function GetItemName(const index: integer): UnicodeString; stdcall;
     function GetItemSize(const index: integer): Int64; stdcall; stdcall;
     function GetItemCompressedSize(const index: integer): Int64; stdcall; stdcall;
+    function GetItemWriteTime(const index: integer): TDateTime; stdcall;
+    function GetItemAttributes(const index: integer): DWORD; stdcall;
     function GetItemIsFolder(const index: integer): boolean; stdcall;
     procedure ExtractItem(const item: Cardinal; Stream: TStream; test: longbool); stdcall;
     procedure ExtractItemToPath(const item: Cardinal; const path: string; test: longbool); stdcall;
