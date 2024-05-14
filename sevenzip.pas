@@ -21,13 +21,13 @@
 // - Added format GUIDS: TE, UEFIc, UEFIs
 // - Fix Range Check Exception in RINOK(); https://github.com/geoffsmith82/d7zip/pull/8
 // - Avoid unhandled Delphi Exceptions crashing the DLL parent process; https://github.com/geoffsmith82/d7zip/pull/9
-// - Implemented packing of empty directories, folders which begin with a dot, and hidden files; https://github.com/geoffsmith82/d7zip/pull/10
+// - Implemented packing and unpacking of empty directories, folders which begin with a dot, and hidden files; https://github.com/geoffsmith82/d7zip/pull/10
 // - Implemented restoring of the file attributes and modification times; https://github.com/geoffsmith82/d7zip/pull/11
-// - Added ExtractItemToPath method; https://github.com/ekot1/d7zip/commit/a6e35cac4fe2306307372f7b4647a7a620d86cf8
+// - Added ExtractItemToPath method, by ekot1; https://github.com/ekot1/d7zip/commit/a6e35cac4fe2306307372f7b4647a7a620d86cf8
 // - Fixed wrong method name in README.md; https://github.com/r3code/d7zip/commit/b7f067436b1259177603cf0cc6e64a80bceaa68e
+// - Show better error message when 7z.dll can not be loaded, by ekot1; https://github.com/ekot1/d7zip/commit/4facb0ef8b190c129d494c9237337918b3dbeece
 
 // TODO: Possible changes to look closer at...
-// - Show better error message when 7z.dll can not be loaded; https://github.com/ekot1/d7zip/commit/4facb0ef8b190c129d494c9237337918b3dbeece
 // - Added SetProgressCallbackEx method to allow use of anonymous methods as callbacks; https://github.com/ekot1/d7zip/commit/d850b85a05dd58ad6ded2823a635ab28b8cb62ca
 // - Changes to match propids from 7z.dll v16.04; https://github.com/ekot1/d7zip/commit/149de16032fe461796857e5eee22c70858cdb4b9
 // - 64 bit file sizes: https://github.com/wang80919/d7zip/commit/b89d4d7a2bc26928a3e8a1de896feac1a79706ce
@@ -966,7 +966,7 @@ constructor T7zPlugin.Create(const lib: string);
 begin
   FHandle := LoadLibrary(PChar(lib));
   if FHandle = 0 then
-    raise exception.CreateFmt('Error loading library %s', [lib]);
+      RaiseLastOSError(GetLastError, Format(#13#10'Error loading library %s', [lib]));
   FCreateObject := GetProcAddress(FHandle, 'CreateObject');
   if not (Assigned(FCreateObject)) then
   begin
