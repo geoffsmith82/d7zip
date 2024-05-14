@@ -1133,11 +1133,6 @@ begin
         path := FExtractPath + GetItemPath(index);
         ForceDirectories(ExtractFilePath(path));
         outStream := T7zStream.Create(TFileStream.Create(path, fmCreate), soOwned, path, GetItemWriteTime(index));
-      end
-      else
-      begin
-        path := FExtractPath + GetItemPath(index);
-        ForceDirectories(path);
       end;
       SetFileAttributes(PChar(path), GetItemAttributes(index));
     end;
