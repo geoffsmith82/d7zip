@@ -19,7 +19,7 @@ unit sevenzip;
 {$WARN SYMBOL_PLATFORM OFF}	
 
 interface
-uses SysUtils, Windows, ActiveX, Classes, Contnrs;
+uses SysUtils, Windows, ActiveX, Classes, Contnrs, System.IOUtils, Math;
 
 type
   PVarType = ^TVarType;
@@ -524,6 +524,8 @@ CODER_INTERFACE(ICompressSetCoderProperties, 0x21)
   private
     FStream: TStream;
     FOwnership: TStreamOwnership;
+    FFileName: string;
+    FWriteTime: TDateTime;
   protected
     function Read(data: Pointer; size: Cardinal; processedSize: PCardinal): HRESULT; stdcall;
     function Seek(offset: Int64; seekOrigin: Cardinal; newPosition: Pint64): HRESULT; stdcall;
@@ -532,7 +534,7 @@ CODER_INTERFACE(ICompressSetCoderProperties, 0x21)
     function Write(data: Pointer; size: Cardinal; processedSize: PCardinal): HRESULT; stdcall;
     function Flush: HRESULT; stdcall;
   public
-    constructor Create(Stream: TStream; Ownership: TStreamOwnership = soReference);
+    constructor Create(Stream: TStream; Ownership: TStreamOwnership = soReference; filename: string=''; writeTime: TDateTime=0);
     destructor Destroy; override;
   end;
 
@@ -830,6 +832,8 @@ type
     function GetInArchive: IInArchive;
     function GetItemProp(const Item: Cardinal; prop: PROPID): OleVariant;
   protected
+    function GetItemWriteTime(const index: integer): TDateTime;
+    function GetItemAttributes(const index: integer): DWORD;
     // I7zInArchive
     procedure OpenFile(const filename: string); stdcall;
     procedure OpenStream(stream: IInStream); stdcall;
@@ -1081,6 +1085,11 @@ begin
   RINOK(InArchive.Open(stream, @MAXCHECK, self as IArchiveOpenCallBack));
 end;
 
+function T7zInArchive.GetItemAttributes(const index: integer): DWORD;
+begin
+  result := DWORD(GetItemProp(index, kpidAttributes));
+end;
+
 function T7zInArchive.GetItemIsFolder(const index: integer): boolean; stdcall;
 begin
   Result := Boolean(GetItemProp(index, kpidIsFolder));
@@ -1123,8 +1132,14 @@ begin
       begin
         path := FExtractPath + GetItemPath(index);
         ForceDirectories(ExtractFilePath(path));
-        outStream := T7zStream.Create(TFileStream.Create(path, fmCreate), soOwned);
+        outStream := T7zStream.Create(TFileStream.Create(path, fmCreate), soOwned, path, GetItemWriteTime(index));
+      end
+      else
+      begin
+        path := FExtractPath + GetItemPath(index);
+        ForceDirectories(path);
       end;
+      SetFileAttributes(PChar(path), GetItemAttributes(index));
     end;
   Result := S_OK;
 end;
@@ -1220,6 +1235,21 @@ end;
 function T7zInArchive.GetItemSize(const index: integer): Cardinal; stdcall;
 begin
   Result := Cardinal(GetItemProp(index, kpidSize));
+end;
+
+function T7zInArchive.GetItemWriteTime(const index: integer): TDateTime;
+var
+  v: OleVariant;
+begin
+  v := GetItemProp(index, kpidLastWriteTime);
+  if TPropVariant(v).vt = VT_FILETIME then
+  begin
+    result := FileTimeToDateTime(TPropVariant(v).filetime);
+  end
+  else
+  begin
+    result := 0;
+  end;
 end;
 
 procedure T7zInArchive.ExtractItems(items: PCardArray; count: cardinal; test: longbool;
@@ -1323,11 +1353,13 @@ end;
 
 { T7zStream }
 
-constructor T7zStream.Create(Stream: TStream; Ownership: TStreamOwnership);
+constructor T7zStream.Create(Stream: TStream; Ownership: TStreamOwnership = soReference; filename: string=''; writeTime: TDateTime=0);
 begin
   inherited Create;
   FStream := Stream;
   FOwnership := Ownership;
+  FFileName := filename;
+  FWriteTime := writeTime;
 end;
 
 destructor T7zStream.destroy;
@@ -1337,6 +1369,11 @@ begin
     FStream.Free;
     FStream := nil;
   end;
+
+  // TODO: Shouldn't this be done somewhere else? Is the flush method the correct place (if flush=finished)?
+  if (FFileName<>'') and (CompareValue(FWriteTime,0)<>0) then
+    TFile.SetLastWriteTime(FFilename, FWriteTime);
+
   inherited;
 end;
 
