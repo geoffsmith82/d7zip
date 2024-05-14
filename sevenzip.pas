@@ -29,6 +29,7 @@
 // - Added constants from ZipHandlerOut.cpp and HandlerOut.cpp; https://github.com/project-jedi/jcl/blob/master/jcl/source/windows/sevenzip.pas
 // - Readme: The source version was actually 1.2 from 2011, and not 1.1 from 2009; https://github.com/danielmarschall/d7zip/commit/18cd6d2e20e755f8a261a9195dd9aadb12ae59d0
 // - Fixed: The method in IOutStreamFinish is called OutStreamFinish, not Flush!
+// - Updated some interface definitions (Cardinal=>UInt32, Int64 sometimes UInt32, etc.); partially added missing interfaces from the 7zip source headers
 
 // TODO: Possible changes to look closer at...
 // - Added SetProgressCallbackEx method to allow use of anonymous methods as callbacks; https://github.com/ekot1/d7zip/commit/d850b85a05dd58ad6ded2823a635ab28b8cb62ca
@@ -49,6 +50,7 @@ interface
 uses SysUtils, Windows, ActiveX, Classes, Contnrs, System.IOUtils, Math;
 
 type
+  PInt32 = ^Int32;
   PVarType = ^TVarType;
   PCardArray = ^TCardArray;
   TCardArray = array[0..MaxInt div SizeOf(Cardinal) - 1] of Cardinal;
@@ -57,8 +59,11 @@ type
   UnicodeString = WideString;
 {$ENDIF}
 
+{$REGION 'PropID.h'}
+
 //******************************************************************************
 // PropID.h
+// (Last checked 14 May 2024; https://github.com/mcmilk/7-Zip/blob/master/CPP/7zip/PropID.h)
 //******************************************************************************
 
 const
@@ -158,40 +163,80 @@ const
   kpidReadOnly              = 93;
   kpidOutName               = 94;
   kpidCopyLink              = 95;
+  kpidArcFileName           = 96;
+  kpidIsHash                = 97;
+  kpidChangeTime            = 98;
+  kpidUserId                = 99;
+  kpidGroupId               =100;
+  kpidDeviceMajor           =101;
+  kpidDeviceMinor           =102;
+  kpidDevMajor              =103;
+  kpidDevMinor              =104;
 
-//  kpidTotalSize        = $1100; // VT_UI8
-//  kpidFreeSpace        = kpidTotalSize + 1; // VT_UI8
-//  kpidClusterSize      = kpidFreeSpace + 1; // VT_UI8
-//  kpidVolumeName       = kpidClusterSize + 1; // VT_BSTR
-//
-//  kpidLocalName        = $1200; // VT_BSTR
-//  kpidProvider         = kpidLocalName + 1; // VT_BSTR
+  kpidUserDefined       = $10000;
 
-  kpidUserDefined      = $10000;
+{$ENDREGION}
+
+{$REGION 'IProgress.h'}
 
 //******************************************************************************
 // IProgress.h
+// (Last checked 14 May 2024; https://github.com/mcmilk/7-Zip/blob/master/CPP/7zip/IProgress.h)
 //******************************************************************************
 type
   IProgress = interface(IUnknown)
   ['{23170F69-40C1-278A-0000-000000050000}']
-    function SetTotal(total: Int64): HRESULT; stdcall;
-    function SetCompleted(completeValue: PInt64): HRESULT; stdcall;
+    function SetTotal(total: UInt64): HRESULT; stdcall;
+    function SetCompleted(completeValue: PUInt64): HRESULT; stdcall;
   end;
+
+{$ENDREGION}
+
+{$REGION 'IPassword.h interfaces'}
 
 //******************************************************************************
 // IPassword.h
+// (Last checked 14 May 2024; https://github.com/mcmilk/7-Zip/blob/master/CPP/7zip/IPassword.h)
 //******************************************************************************
 
   ICryptoGetTextPassword = interface(IUnknown)
   ['{23170F69-40C1-278A-0000-000500100000}']
     function CryptoGetTextPassword(var password: TBStr): HRESULT; stdcall;
+    (*
+    How to use output parameter (BSTR *password):
+
+    in:  The caller is required to set BSTR value as NULL (no string).
+         The callee (in 7-Zip code) ignores the input value stored in BSTR variable,
+
+    out: The callee rewrites BSTR variable (*password) with new allocated string pointer.
+         The caller must free BSTR string with function SysFreeString();
+    *)
   end;
 
   ICryptoGetTextPassword2 = interface(IUnknown)
   ['{23170F69-40C1-278A-0000-000500110000}']
-    function CryptoGetTextPassword2(passwordIsDefined: PInteger; var password: TBStr): HRESULT; stdcall;
+    function CryptoGetTextPassword2(passwordIsDefined: PInt32; var password: TBStr): HRESULT; stdcall;
+    (*
+    in:
+      The caller is required to set BSTR value as NULL (no string).
+      The caller is not required to set (*passwordIsDefined) value.
+
+    out:
+      Return code: != S_OK : error code
+      Return code:    S_OK : success
+
+      if (*passwordIsDefined == 1), the variable (*password) contains password string
+
+      if (*passwordIsDefined == 0), the password is not defined,
+         but the callee still could set (*password) to some allocated string, for example, as empty string.
+
+      The caller must free BSTR string with function SysFreeString()
+    *)
   end;
+
+{$ENDREGION}
+
+{$REGION 'IStream.h interfaces ("23170F69-40C1-278A-0000-000300xx0000")'}
 
 //******************************************************************************
 // IStream.h
@@ -205,7 +250,9 @@ type
     (*
     The requirement for caller: (processedSize != NULL).
     The callee can allow (processedSize == NULL) for compatibility reasons.
+
     if (size == 0), this function returns S_OK and (*processedSize) is set to 0.
+
     if (size != 0)
     {
       Partial read is allowed: (*processedSize <= avail_size && *processedSize <= size),
@@ -213,8 +260,10 @@ type
       If (avail_size != 0), this function must read at least 1 byte: (*processedSize > 0).
       You must call Read() in loop, if you need to read exact amount of data.
     }
+
     If seek pointer before Read() call was changed to position past the end of stream:
       if (seek_pointer >= stream_size), this function returns S_OK and (*processedSize) is set to 0.
+
     ERROR CASES:
       If the function returns error code, then (*processedSize) is size of
       data written to (data) buffer (it can be data before error or data with errors).
@@ -230,12 +279,14 @@ type
     (*
     The requirement for caller: (processedSize != NULL).
     The callee can allow (processedSize == NULL) for compatibility reasons.
+
     if (size != 0)
     {
       Partial write is allowed: (*processedSize <= size),
       but this function must write at least 1 byte: (*processedSize > 0).
       You must call Write() in loop, if you need to write exact amount of data.
     }
+
     ERROR CASES:
       If the function returns error code, then (*processedSize) is size of
       data written from (data) buffer.
@@ -245,6 +296,14 @@ type
   IInStream = interface(ISequentialInStream)
   ['{23170F69-40C1-278A-0000-000300030000}']
     function Seek(offset: Int64; seekOrigin: UInt32; newPosition: PUInt64): HRESULT; stdcall;
+    (*
+    If you seek to position before the beginning of the stream,
+    Seek() function returns error code:
+        Recommended error code is __HRESULT_FROM_WIN32(ERROR_NEGATIVE_SEEK).
+        or STG_E_INVALIDFUNCTION
+    It is allowed to seek past the end of the stream.
+    if Seek() returns error, then the value of *newPosition is undefined.
+    *)
   end;
 
   IOutStream = interface(ISequentialOutStream)
@@ -260,9 +319,7 @@ type
 
   IOutStreamFinish = interface(IUnknown)
   ['{23170F69-40C1-278A-0000-000300070000}']
-    // It is a misconception that the method is called Flush!
-    // It is called OutStreamFinish according to IStream.h
-    function OutStreamFinish: HRESULT; stdcall;
+    function OutStreamFinish: HRESULT; stdcall; // sic! This method is called OutStreamFinish and not Flush!
   end;
 
   IStreamGetProps = interface(IUnknown)
@@ -271,8 +328,13 @@ type
       mTime: PFileTime; attrib: PUInt32): HRESULT; stdcall;
   end;
 
+{$ENDREGION}
+
+{$REGION 'IArchive.h interfaces ("23170F69-40C1-278A-0000-000600xx0000")'}
+
 //******************************************************************************
 // IArchive.h
+// (Last checked 14 May 2024; https://github.com/mcmilk/7-Zip/blob/master/CPP/7zip/Archive/IArchive.h)
 //******************************************************************************
 
 // MIDL_INTERFACE("23170F69-40C1-278A-0000-000600xx0000")
@@ -320,7 +382,8 @@ type
     kSignatureOffset,   // VT_UI4
     kAltStreams,        // VT_BOOL
     kNtSecure,          // VT_BOOL
-    kFlags              // VT_UI4
+    kFlags,             // VT_UI4
+    kTimeFlags          // VT_UI4
     // kVersion           // VT_UI4 ((VER_MAJOR << 8) | VER_MINOR)
   );
 
@@ -328,7 +391,8 @@ type
   NAskMode = (
     kExtract = 0,
     kTest,
-    kSkip
+    kSkip,
+    kReadExternal
   );
 
 // NArchive::NExtract::NOperationResult
@@ -343,6 +407,7 @@ type
     kIsNotArc,
     kHeadersError,
     kWrongPassword
+    // , kMemError
   );
 
 // NArchive::NEventIndexType
@@ -357,12 +422,13 @@ type
   NUpdOperationResult = (
     kOK_   = 0,
     kError
+    //,kError_FileChanged
   );
 
   IArchiveOpenCallback = interface
   ['{23170F69-40C1-278A-0000-000600100000}']
-    function SetTotal(files, bytes: PInt64): HRESULT; stdcall;
-    function SetCompleted(files, bytes: PInt64): HRESULT; stdcall;
+    function SetTotal(files, bytes: PUInt64): HRESULT; stdcall;
+    function SetCompleted(files, bytes: PUInt64): HRESULT; stdcall;
     (*
     IArchiveExtractCallback::
     7-Zip doesn't call IArchiveExtractCallback functions
@@ -423,9 +489,16 @@ type
     *)
   end;
 
+  // before v23:
   IArchiveExtractCallbackMessage = interface
   ['{23170F69-40C1-278A-0000-000600210000}']
-    function ReportExtractResult(indexType: NEventIndexType; index: Cardinal; opRes: Integer): HRESULT; stdcall;
+    function ReportExtractResult(indexType: NEventIndexType; index: UInt32; opRes: Int32): HRESULT; stdcall;
+  end;
+
+  IArchiveExtractCallbackMessage2 = interface
+  ['{23170F69-40C1-278A-0000-000600220000}']
+    // IArchiveExtractCallbackMessage2 can be requested from IArchiveExtractCallback object by Extract() or UpdateItems() functions to report about extracting errors
+    function ReportExtractResult(indexType: NEventIndexType; index: UInt32; opRes: Int32): HRESULT; stdcall;
   end;
 
   IArchiveOpenVolumeCallback = interface
@@ -476,9 +549,9 @@ type
       Some IInArchive handlers will work incorrectly in that case.
     *)
     function Close: HRESULT; stdcall;
-    function GetNumberOfItems(var numItems: CArdinal): HRESULT; stdcall;
-    function GetProperty(index: Cardinal; propID: PROPID; var value: OleVariant): HRESULT; stdcall;
-    function Extract(indices: PCardArray; numItems: Cardinal;
+    function GetNumberOfItems(var numItems: UInt32): HRESULT; stdcall;
+    function GetProperty(index: UInt32; propID: PROPID; var value: OleVariant): HRESULT; stdcall;
+    function Extract(indices: PCardArray; numItems: UInt32;
         testMode: Integer; extractCallback: IArchiveExtractCallback): HRESULT; stdcall;
     // indices must be sorted
     // numItems = 0xFFFFFFFF means all files
@@ -487,11 +560,11 @@ type
     function GetArchiveProperty(propID: PROPID; var value: OleVariant): HRESULT; stdcall;
 
     function GetNumberOfProperties(numProperties: PCardinal): HRESULT; stdcall;
-    function GetPropertyInfo(index: Cardinal;
+    function GetPropertyInfo(index: UInt32;
         name: PBSTR; propID: PPropID; varType: PVarType): HRESULT; stdcall;
 
-    function GetNumberOfArchiveProperties(var numProperties: Cardinal): HRESULT; stdcall;
-    function GetArchivePropertyInfo(index: Cardinal;
+    function GetNumberOfArchiveProperties(var numProps: UInt32): HRESULT; stdcall;
+    function GetArchivePropertyInfo(index: UInt32;
         name: PBSTR; propID: PPropID; varType: PVARTYPE): HRESULT; stdcall;
   end;
 
@@ -499,6 +572,13 @@ type
   ['{23170F69-40C1-278A-0000-000600610000}']
     function OpenSeq(var stream: ISequentialInStream): HRESULT; stdcall;
   end;
+
+  (*
+  IArchiveOpen2 = interface
+  ['{23170F69-40C1-278A-0000-000600620000}']
+    function ArcOpen2(ISequentialInStream *stream, UInt32 flags, IArchiveOpenCallback *openCallback): HRESULT; stdcall;
+  end;
+  *)
 
 // NParentType::
   NParentType = (
@@ -522,75 +602,129 @@ type
     kUtf16z = $51  // kMask_Utf16 or kMask_ZeroEnd
   );
 
+// NUpdateNotifyOp::
+{
+  NUpdateNotifyOp = (
+    kAdd,
+    kUpdate,
+    kAnalyze,
+    kReplicate,
+    kRepack,
+    kSkip,
+    kDelete,
+    kHeader,
+    kHashRead,
+    kInFileChanged
+    // , kOpFinished
+    // , kNumDefined
+  );
+}
+
   IArchiveGetRawProps = interface
   ['{23170F69-40C1-278A-0000-000600700000}']
-    function GetParent(index: Cardinal; var parent: Cardinal; var parentType: Cardinal): HRESULT; stdcall;
-    function GetRawProp(index: Cardinal; propID: PROPID; var data: Pointer; var dataSize: Cardinal; var propType: Cardinal): HRESULT; stdcall;
-    function GetNumRawProps(var numProps: Cardinal): HRESULT; stdcall;
-    function GetRawPropInfo(index: Cardinal; name: PBSTR; var propID: PROPID): HRESULT; stdcall;
+    function GetParent(index: UInt32; var parent: UInt32; var parentType: UInt32): HRESULT; stdcall;
+    function GetRawProp(index: UInt32; propID: PROPID; var data: Pointer; var dataSize: UInt32; var propType: UInt32): HRESULT; stdcall;
+    function GetNumRawProps(var numProps: UInt32): HRESULT; stdcall;
+    function GetRawPropInfo(index: UInt32; name: PBSTR; var propID: PROPID): HRESULT; stdcall;
   end;
 
   IArchiveGetRootProps = interface
   ['{23170F69-40C1-278A-0000-000600710000}']
     function GetRootProp(propID: PROPID; var value: PROPVARIANT): HRESULT; stdcall;
-    function GetRootRawProp(propID: PROPID; var data: Pointer; var dataSize: Cardinal; var propType: Cardinal): HRESULT; stdcall;
+    function GetRootRawProp(propID: PROPID; var data: Pointer; var dataSize: UINT32; var propType: UInt32): HRESULT; stdcall;
   end;
 
   IArchiveUpdateCallback = interface(IProgress)
   ['{23170F69-40C1-278A-0000-000600800000}']
-    function GetUpdateItemInfo(index: Cardinal;
-        newData: PInteger; // 1 - new data, 0 - old data
-        newProperties: PInteger; // 1 - new properties, 0 - old properties
-        indexInArchive: PCardinal // -1 if there is no in archive, or if doesn't matter
+    function GetUpdateItemInfo(index: UInt32;
+        newData: PInt32; // 1 - new data, 0 - old data
+        newProps: PInt32; // 1 - new properties, 0 - old properties
+        indexInArchive: PUInt32 // -1 if there is no in archive, or if doesn't matter
         ): HRESULT; stdcall;
-    function GetProperty(index: Cardinal; propID: PROPID; var value: OleVariant): HRESULT; stdcall;
-    function GetStream(index: Cardinal; var inStream: ISequentialInStream): HRESULT; stdcall;
-    function SetOperationResult(operationResult: Integer): HRESULT; stdcall;
+    function GetProperty(index: UInt32; propID: PROPID; var value: OleVariant): HRESULT; stdcall;
+    function GetStream(index: UInt32; var inStream: ISequentialInStream): HRESULT; stdcall;
+    function SetOperationResult(operationResult: Int32): HRESULT; stdcall;
   end;
 
   IArchiveUpdateCallback2 = interface(IArchiveUpdateCallback)
   ['{23170F69-40C1-278A-0000-000600820000}']
-    function GetVolumeSize(index: Cardinal; size: PInt64): HRESULT; stdcall;
-    function GetVolumeStream(index: Cardinal; var volumeStream: ISequentialOutStream): HRESULT; stdcall;
+    function GetVolumeSize(index: UInt32; size: PUInt64): HRESULT; stdcall;
+    function GetVolumeStream(index: UInt32; var volumeStream: ISequentialOutStream): HRESULT; stdcall;
   end;
+
+  (*
+  IArchiveUpdateCallbackFile = interface
+  ['{23170F69-40C1-278A-0000-000600830000}']
+    function GetStream2(UInt32 index, ISequentialInStream **inStream, UInt32 notifyOp)): HRESULT; stdcall;
+    function ReportOperation(UInt32 indexType, UInt32 index, UInt32 notifyOp)): HRESULT; stdcall;
+  end;
+
+  IArchiveGetDiskProperty = interface
+  ['{23170F69-40C1-278A-0000-000600840000}']
+    function GetDiskProperty(UInt32 index, PROPID propID, PROPVARIANT *value)): HRESULT; stdcall;
+  end;
+
+  IArchiveUpdateCallbackArcProp = interface
+  ['{23170F69-40C1-278A-0000-000600850000}']
+    function ReportProp(UInt32 indexType, UInt32 index, PROPID propID, const PROPVARIANT *value)): HRESULT; stdcall;
+    function ReportRawProp(UInt32 indexType, UInt32 index, PROPID propID, const void *data, UInt32 dataSize, UInt32 propType)): HRESULT; stdcall;
+    function ReportFinished(UInt32 indexType, UInt32 index, Int32 opRes)): HRESULT; stdcall;
+    function DoNeedArcProp(PROPID propID, Int32 *answer)): HRESULT; stdcall;
+  end;
+  *)
 
   IOutArchive = interface
   ['{23170F69-40C1-278A-0000-000600A00000}']
-    function UpdateItems(outStream: ISequentialOutStream; numItems: Cardinal;
+    function UpdateItems(outStream: ISequentialOutStream; numItems: UInt32;
       updateCallback: IArchiveUpdateCallback): HRESULT; stdcall;
-    function GetFileTimeType(type_: PCardinal): HRESULT; stdcall;
+    function GetFileTimeType(type_: PUint32): HRESULT; stdcall;
   end;
 
   ISetProperties = interface
   ['{23170F69-40C1-278A-0000-000600030000}']
-    function SetProperties(names: PPWideChar; values: PPROPVARIANT; numProperties: Integer): HRESULT; stdcall;
+    function SetProperties(names: PPWideChar; values: PPROPVARIANT; numProps: UInt32): HRESULT; stdcall;
   end;
+
+  IArchiveKeepModeForNextOpen = interface
+  ['{23170F69-40C1-278A-0000-000600040000}']
+    function KeepModeForNextOpen: HRESULT; stdcall;
+  end;
+
+  IArchiveAllowTail = interface
+  ['{23170F69-40C1-278A-0000-000600050000}']
+    function AllowTail(allowTail: Int32): HRESULT; stdcall;
+  end;
+
+{$ENDREGION}
+
+{$REGION 'ICoder.h interfaces ("23170F69-40C1-278A-0000-000400xx0000")'}
 
 //******************************************************************************
 // ICoder.h
 // "23170F69-40C1-278A-0000-000400xx0000"
+// (Last checked 14 May 2024; https://github.com/mcmilk/7-Zip/blob/master/CPP/7zip/ICoder.h)
 //******************************************************************************
 
   ICompressProgressInfo = interface
   ['{23170F69-40C1-278A-0000-000400040000}']
-    function SetRatioInfo(inSize, outSize: PInt64): HRESULT; stdcall;
+    function SetRatioInfo(inSize, outSize: PUInt64): HRESULT; stdcall;
   end;
 
   ICompressCoder = interface
   ['{23170F69-40C1-278A-0000-000400050000}']
   function Code(inStream, outStream: ISequentialInStream;
-      inSize, outSize: PInt64;
+      inSize, outSize: PUInt64;
       progress: ICompressProgressInfo): HRESULT; stdcall;
   end;
 
   ICompressCoder2 = interface
   ['{23170F69-40C1-278A-0000-000400180000}']
   function Code(var inStreams: ISequentialInStream;
-      var inSizes: PInt64;
-      numInStreams: Cardinal;
+      var inSizes: PUInt64;
+      numInStreams: UInt32;
       var outStreams: ISequentialOutStream;
-      var outSizes: PInt64;
-      numOutStreams: Cardinal;
+      var outSizes: PUInt64;
+      numOutStreams: UInt32;
       progress: ICompressProgressInfo): HRESULT; stdcall;
   end;
 
@@ -615,11 +749,16 @@ type
     kReduceSize // estimated size of data that will be compressed. Encoder can use this value to reduce dictionary size.
   );
 
+
 type
+  ICompressSetCoderPropertiesOpt = interface
+  ['{23170F69-40C1-278A-0000-0004001F0000}']
+    function SetCoderPropertiesOpt(propIDs: PPropID; props: PROPVARIANT; numProps: UInt32): HRESULT; stdcall;
+  end;
+
   ICompressSetCoderProperties = interface
   ['{23170F69-40C1-278A-0000-000400200000}']
-    function SetCoderProperties(propIDs: PPropID;
-      properties: PROPVARIANT; numProperties: Cardinal): HRESULT; stdcall;
+    function SetCoderProperties(propIDs: PPropID; props: PROPVARIANT; numProps: UInt32): HRESULT; stdcall;
   end;
 
 (*
@@ -631,7 +770,13 @@ CODER_INTERFACE(ICompressSetCoderProperties, 0x21)
 
   ICompressSetDecoderProperties2 = interface
   ['{23170F69-40C1-278A-0000-000400220000}']
-    function SetDecoderProperties2(data: PByte; size: Cardinal): HRESULT; stdcall;
+    function SetDecoderProperties2(data: PByte; size: UInt32): HRESULT; stdcall;
+    (*
+    S_OK
+    E_NOTIMP      : unsupported properties
+    E_INVALIDARG  : incorrect (or unsupported) properties
+    E_OUTOFMEMORY : memory allocation error
+    *)
   end;
 
   ICompressWriteCoderProperties = interface
@@ -641,17 +786,50 @@ CODER_INTERFACE(ICompressSetCoderProperties, 0x21)
 
   ICompressGetInStreamProcessedSize = interface
   ['{23170F69-40C1-278A-0000-000400240000}']
-    function GetInStreamProcessedSize(value: PInt64): HRESULT; stdcall;
+    function GetInStreamProcessedSize(value: PUInt64): HRESULT; stdcall;
   end;
 
   ICompressSetCoderMt = interface
   ['{23170F69-40C1-278A-0000-000400250000}']
-    function SetNumberOfThreads(numThreads: Cardinal): HRESULT; stdcall;
+    function SetNumberOfThreads(numThreads: UInt32): HRESULT; stdcall;
+  end;
+
+  ICompressSetFinishMode = interface
+  ['{23170F69-40C1-278A-0000-000400260000}']
+    function SetFinishMode(finishMode: UInt32): HRESULT; stdcall;
+    (* finishMode:
+    0 : partial decoding is allowed. It's default mode for ICompressCoder::Code(), if (outSize) is defined.
+    1 : full decoding. The stream must be finished at the end of decoding.
+    *)
+  end;
+
+  ICompressGetInStreamProcessedSize2 = interface
+  ['{23170F69-40C1-278A-0000-000400270000}']
+    function GetInStreamProcessedSize2(streamIndex: UInt32; value: PUInt64): HRESULT; stdcall;
+  end;
+
+  ICompressSetMemLimit = interface
+  ['{23170F69-40C1-278A-0000-000400280000}']
+    function SetMemLimit(memUsage: UInt64): HRESULT; stdcall;
+  end;
+
+  ICompressReadUnusedFromInBuf = interface
+  ['{23170F69-40C1-278A-0000-000400290000}']
+    function ReadUnusedFromInBuf(data: Pointer; size: UInt32; processedSize: PUInt32): HRESULT; stdcall;
+    (*
+    ICompressReadUnusedFromInBuf is supported by ICoder object
+    call ReadUnusedFromInBuf() after ICoder::Code(inStream, ...).
+    ICoder::Code(inStream, ...) decodes data, and the ICoder object is allowed
+    to read from inStream to internal buffers more data than minimal data required for decoding.
+    So we can call ReadUnusedFromInBuf() from same ICoder object to read unused input
+    data from the internal buffer.
+    in ReadUnusedFromInBuf(): the Coder is not allowed to use (ISequentialInStream *inStream) object, that was sent to ICoder::Code().
+    *)
   end;
 
   ICompressGetSubStreamSize = interface
   ['{23170F69-40C1-278A-0000-000400300000}']
-    function GetSubStreamSize(subStream: Int64; value: PInt64): HRESULT; stdcall;
+    function GetSubStreamSize(subStream: UInt64; value: PUInt64): HRESULT; stdcall;
   end;
 
   ICompressSetInStream = interface
@@ -668,24 +846,129 @@ CODER_INTERFACE(ICompressSetCoderProperties, 0x21)
 
   ICompressSetInStreamSize = interface
   ['{23170F69-40C1-278A-0000-000400330000}']
-    function SetInStreamSize(inSize: PInt64): HRESULT; stdcall;
+    function SetInStreamSize(inSize: PUInt64): HRESULT; stdcall;
   end;
 
   ICompressSetOutStreamSize = interface
   ['{23170F69-40C1-278A-0000-000400340000}']
-    function SetOutStreamSize(outSize: PInt64): HRESULT; stdcall;
+    function SetOutStreamSize(outSize: PUInt64): HRESULT; stdcall;
   end;
+
+  ICompressSetBufSize = interface
+  ['{23170F69-40C1-278A-0000-000400350000}']
+    function SetInBufSize(streamIndex: UInt32; size: UInt32): HRESULT; stdcall;
+    function SetOutBufSize(streamIndex: UInt32; size: UInt32): HRESULT; stdcall;
+  end;
+
+  ICompressInitEncoder = interface
+  ['{23170F69-40C1-278A-0000-000400360000}']
+    function InitEncoder: HRESULT; stdcall;
+    (*
+    That function initializes encoder structures.
+    Call this function only for stream version of encoder.
+    *)
+  end;
+
+  ICompressSetInStream2 = interface
+  ['{23170F69-40C1-278A-0000-000400370000}']
+   function SetInStream2(streamIndex: UInt32; inStream: ISequentialInStream): HRESULT; stdcall;
+   function ReleaseInStream2(streamIndex: UInt32): HRESULT; stdcall;
+  end;
+
+  ICompressSetOutStream2 = interface
+  ['{23170F69-40C1-278A-0000-000400380000}']
+   function SetOutStream2(streamIndex: UInt32; outStream: ISequentialOutStream): HRESULT; stdcall;
+   function ReleaseOutStream2(streamIndex: UInt32): HRESULT; stdcall;
+  end;
+
+  ICompressSetInStreamSize2 = interface
+  ['{23170F69-40C1-278A-0000-000400390000}']
+   function SetInStreamSize2(streamIndex: UInt32; inSize: PUInt64): HRESULT; stdcall;
+  end;
+
+  (*
+  ICompressInSubStreams = interface
+  ['{23170F69-40C1-278A-0000-0004003A0000}']
+   function GetNextInSubStream(streamIndexRes: PUInt64; var stream: PISequentialInStream): HRESULT; stdcall;
+  end;
+
+  ICompressOutSubStreams = interface
+  ['{23170F69-40C1-278A-0000-0004003B0000}']
+   function GetNextOutSubStream(streamIndexRes: PUInt64; var stream: PISequentialOutStream): HRESULT; stdcall;
+  end;
+  *)
+
+  (*
+  ICompressFilter
+  Filter(Byte *data, UInt32 size)
+  (size)
+     converts as most as possible bytes required for fast processing.
+     Some filters have (smallest_fast_block).
+     For example, (smallest_fast_block == 16) for AES CBC/CTR filters.
+     If data stream is not finished, caller must call Filter() for larger block:
+     where (size >= smallest_fast_block).
+     if (size >= smallest_fast_block)
+     {
+       The filter can leave some bytes at the end of data without conversion:
+       if there are data alignment reasons or speed reasons.
+       The caller can read additional data from stream and call Filter() again.
+     }
+     If data stream was finished, caller can call Filter() for (size < smallest_fast_block)
+
+  (data) parameter:
+     Some filters require alignment for any Filter() call:
+        1) (stream_offset % alignment_size) == (data % alignment_size)
+        2) (alignment_size == 2^N)
+     where (stream_offset) - is the number of bytes that were already filtered before.
+     The callers of Filter() are required to meet these requirements.
+     (alignment_size) can be different:
+           16 : for AES filters
+       4 or 2 : for some branch convert filters
+            1 : for another filters
+     (alignment_size >= 16) is enough for all current filters of 7-Zip.
+     But the caller can use larger (alignment_size).
+     Recommended alignment for (data) of Filter() call is (alignment_size == 64).
+     Also it's recommended to use aligned value for (size):
+       (size % alignment_size == 0),
+     if it's not last call of Filter() for current stream.
+
+  returns: (outSize):
+       if (outSize == 0) : Filter have not converted anything.
+           So the caller can stop processing, if data stream was finished.
+       if (outSize <= size) : Filter have converted outSize bytes
+       if (outSize >  size) : Filter have not converted anything.
+           and it needs at least outSize bytes to convert one block
+           (it's for crypto block algorithms).
+*/
+*)
 
   ICompressFilter = interface
   ['{23170F69-40C1-278A-0000-000400400000}']
     function Init: HRESULT; stdcall;
-    function Filter(data: PByte; size: Cardinal): Cardinal; stdcall;
-    // Filter return outSize (Cardinal)
+    function Filter(data: PByte; size: UInt32): UInt32; stdcall;
+    // Filter return outSize (UInt32)
     // if (outSize <= size): Filter have converted outSize bytes
     // if (outSize > size): Filter have not converted anything.
     //      and it needs at least outSize bytes to convert one block
     //      (it's for crypto block algorithms).
   end;
+
+  (*
+  ICompressCodecsInfo = interface
+  ['{23170F69-40C1-278A-0000-000400600000}']
+    function GetNumMethods(numMethods: PUInt32): HRESULT; stdcall;
+    function GetProperty(index: UInt32; propID: PROPID; PROPVARIANT *value): HRESULT; stdcall;
+    function CreateDecoder(index: UInt32; const iid: PGUID; void* *coder): HRESULT; stdcall;
+    function CreateEncoder(index: UInt32, const iid: PGUID; void* *coder): HRESULT; stdcall;
+  end;
+  *)
+
+  (*
+  ISetCompressCodecsInfo = interface
+  ['{23170F69-40C1-278A-0000-000400610000}']
+    function SetCompressCodecsInfo(compressCodecsInfo: PICompressCodecsInfo): HRESULT; stdcall;
+  end;
+  *)
 
   ICryptoProperties = interface
   ['{23170F69-40C1-278A-0000-000400800000}']
@@ -693,15 +976,50 @@ CODER_INTERFACE(ICompressSetCoderProperties, 0x21)
     function SetInitVector(data: PByte; size: Cardinal): HRESULT; stdcall;
   end;
 
+  ICryptoResetSalt = interface
+  ['{23170F69-40C1-278A-0000-000400880000}']
+    function ResetSalt: HRESULT; stdcall;
+  end;
+
+  ICryptoResetInitVector = interface
+  ['{23170F69-40C1-278A-0000-0004008C0000}']
+    function ResetInitVector: HRESULT; stdcall;
+    (*
+    Call ResetInitVector() only for encoding.
+    Call ResetInitVector() before encoding and before WriteCoderProperties().
+    Crypto encoder can create random IV in that function.
+    *)
+  end;
+
   ICryptoSetPassword = interface
   ['{23170F69-40C1-278A-0000-000400900000}']
-    function CryptoSetPassword(data: PByte; size: Cardinal): HRESULT; stdcall;
+    function CryptoSetPassword(data: PByte; size: UInt32): HRESULT; stdcall;
   end;
 
   ICryptoSetCRC = interface
   ['{23170F69-40C1-278A-0000-000400A00000}']
-    function CryptoSetCRC(crc: Cardinal): HRESULT; stdcall;
+    function CryptoSetCRC(crc: UInt32): HRESULT; stdcall;
   end;
+
+  IHasher = interface
+  ['{23170F69-40C1-278A-0000-000400C00000}']
+    procedure Init; stdcall;
+    procedure Update(const data: Pointer; size: UInt32); stdcall;
+    procedure Final(digest: PByte); stdcall;
+    function GetDigestSize: UInt32; stdcall;
+  end;
+
+  (*
+  IHashers = interface
+  ['{23170F69-40C1-278A-0000-000400C10000}']
+    function GetNumHashers: UInt32;
+    function GetHasherProp(index: UInt32; propID: PROPID; var value: PROPVARIANT): HRESULT; stdcall;
+    function CreateHasher(index: UInt32; var hasher: PIHasher): HRESULT; stdcall;
+  end;
+  *)
+
+{$ENDREGION}
+
 
 //////////////////////
 // It's for DLL file
@@ -1116,7 +1434,7 @@ type
     function GetMethodProperty(index: Cardinal; propID: NMethodPropID): OleVariant;
     function GetName(const index: integer): string;
   protected
-    function SetRatioInfo(inSize, outSize: PInt64): HRESULT; stdcall;
+    function SetRatioInfo(inSize, outSize: PUInt64): HRESULT; stdcall;
   public
     function GetDecoder(const index: integer): ICompressCoder;
     function GetEncoder(const index: integer): ICompressCoder;
@@ -1183,11 +1501,11 @@ type
     procedure ExtractTo(const path: string); stdcall;
     procedure SetPassword(const password: UnicodeString); stdcall;
     // IArchiveOpenCallback
-    function SetTotal(files, bytes: PInt64): HRESULT; overload; stdcall;
-    function SetCompleted(files, bytes: PInt64): HRESULT; overload; stdcall;
+    function SetTotal(files, bytes: PUInt64): HRESULT; overload; stdcall;
+    function SetCompleted(files, bytes: PUInt64): HRESULT; overload; stdcall;
     // IProgress
-    function SetTotal(total: Int64): HRESULT;  overload; stdcall;
-    function SetCompleted(completeValue: PInt64): HRESULT; overload; stdcall;
+    function SetTotal(total: UInt64): HRESULT;  overload; stdcall;
+    function SetCompleted(completeValue: PUInt64): HRESULT; overload; stdcall;
     // IArchiveExtractCallback
     function GetStream(index: Cardinal; var outStream: ISequentialOutStream;
       askExtractMode: NAskMode): HRESULT; overload; stdcall;
@@ -1229,19 +1547,19 @@ type
     procedure SetPassword(const password: UnicodeString); stdcall;
     procedure SetPropertie(name: UnicodeString; value: OleVariant); stdcall;
     // IProgress
-    function SetTotal(total: Int64): HRESULT; stdcall;
-    function SetCompleted(completeValue: PInt64): HRESULT; stdcall;
+    function SetTotal(total: UInt64): HRESULT; stdcall;
+    function SetCompleted(completeValue: PUInt64): HRESULT; stdcall;
     // IArchiveUpdateCallback
-    function GetUpdateItemInfo(index: Cardinal;
-        newData: PInteger; // 1 - new data, 0 - old data
-        newProperties: PInteger; // 1 - new properties, 0 - old properties
-        indexInArchive: PCardinal // -1 if there is no in archive, or if doesn't matter
+    function GetUpdateItemInfo(index: UInt32;
+        newData: PInt32; // 1 - new data, 0 - old data
+        newProperties: PInt32; // 1 - new properties, 0 - old properties
+        indexInArchive: PUInt32 // -1 if there is no in archive, or if doesn't matter
         ): HRESULT; stdcall;
-    function GetProperty(index: Cardinal; propID: PROPID; var value: OleVariant): HRESULT; stdcall;
-    function GetStream(index: Cardinal; var inStream: ISequentialInStream): HRESULT; stdcall;
+    function GetProperty(index: UInt32; propID: PROPID; var value: OleVariant): HRESULT; stdcall;
+    function GetStream(index: UInt32; var inStream: ISequentialInStream): HRESULT; stdcall;
     function SetOperationResult(operationResult: Integer): HRESULT; stdcall;
     // ICryptoGetTextPassword2
-    function CryptoGetTextPassword2(passwordIsDefined: PInteger; var password: TBStr): HRESULT; stdcall;
+    function CryptoGetTextPassword2(passwordIsDefined: PInt32; var password: TBStr): HRESULT; stdcall;
   public
     constructor Create(const lib: string); override;
     destructor Destroy; override;
@@ -1346,7 +1664,7 @@ begin
 end;
 
 
-function T7zCodec.SetRatioInfo(inSize, outSize: PInt64): HRESULT;
+function T7zCodec.SetRatioInfo(inSize, outSize: PUInt64): HRESULT;
 begin
   Result := S_OK;
 end;
@@ -1503,7 +1821,7 @@ begin
   Result := S_OK;
 end;
 
-function T7zInArchive.SetCompleted(completeValue: PInt64): HRESULT;
+function T7zInArchive.SetCompleted(completeValue: PUInt64): HRESULT;
 begin
   try
     if Assigned(FProgressCallback) and (completeValue <> nil) then
@@ -1520,7 +1838,7 @@ begin
   end;
 end;
 
-function T7zInArchive.SetCompleted(files, bytes: PInt64): HRESULT;
+function T7zInArchive.SetCompleted(files, bytes: PUInt64): HRESULT;
 begin
   Result := S_OK;
 end;
@@ -1531,7 +1849,7 @@ begin
   Result := S_OK;
 end;
 
-function T7zInArchive.SetTotal(total: Int64): HRESULT;
+function T7zInArchive.SetTotal(total: UInt64): HRESULT;
 begin
   try
     if Assigned(FProgressCallback) then
@@ -1548,7 +1866,7 @@ begin
   end;
 end;
 
-function T7zInArchive.SetTotal(files, bytes: PInt64): HRESULT;
+function T7zInArchive.SetTotal(files, bytes: PUInt64): HRESULT;
 begin
   Result := S_OK;
 end;
@@ -2047,7 +2365,7 @@ begin
   FProgressSender := nil;
 end;
 
-function T7zOutArchive.CryptoGetTextPassword2(passwordIsDefined: PInteger;
+function T7zOutArchive.CryptoGetTextPassword2(passwordIsDefined: PInt32;
   var password: TBStr): HRESULT;
 begin
   try
@@ -2170,8 +2488,8 @@ begin
   end;
 end;
 
-function T7zOutArchive.GetUpdateItemInfo(index: Cardinal; newData,
-  newProperties: PInteger; indexInArchive: PCardinal): HRESULT;
+function T7zOutArchive.GetUpdateItemInfo(index: UInt32; newData,
+  newProperties: PInt32; indexInArchive: PUInt32): HRESULT;
 begin
   try
     newData^ := 1;
@@ -2213,7 +2531,7 @@ begin
   end;
 end;
 
-function T7zOutArchive.SetCompleted(completeValue: PInt64): HRESULT;
+function T7zOutArchive.SetCompleted(completeValue: PUInt64): HRESULT;
 begin
   try
     if Assigned(FProgressCallback) and (completeValue <> nil) then
@@ -2259,7 +2577,7 @@ begin
   RINOK(intf.SetProperties(@p, @TPropVariant(value), 1));
 end;
 
-function T7zOutArchive.SetTotal(total: Int64): HRESULT;
+function T7zOutArchive.SetTotal(total: UInt64): HRESULT;
 begin
   try
     if Assigned(FProgressCallback) then
