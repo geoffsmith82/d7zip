@@ -1447,8 +1447,8 @@ type
     function GetNumberOfItems: Cardinal; stdcall;
     function GetItemPath(const index: integer): UnicodeString; stdcall;
     function GetItemName(const index: integer): UnicodeString; stdcall;
-    function GetItemSize(const index: integer): Int64; stdcall; stdcall;
-    function GetItemCompressedSize(const index: integer): Int64; stdcall; stdcall;
+    function GetItemSize(const index: integer): Int64; stdcall;
+    function GetItemCompressedSize(const index: integer): Int64; stdcall;
     function GetItemWriteTime(const index: integer): TDateTime; stdcall;
     function GetItemAttributes(const index: integer): DWORD; stdcall;
     function GetItemIsFolder(const index: integer): boolean; stdcall;
