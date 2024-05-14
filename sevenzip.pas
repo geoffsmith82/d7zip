@@ -474,6 +474,8 @@ CODER_INTERFACE(ICompressSetCoderProperties, 0x21)
     function GetItemPath(const index: integer): UnicodeString; stdcall;
     function GetItemName(const index: integer): UnicodeString; stdcall;
     function GetItemSize(const index: integer): Cardinal; stdcall;
+    function GetItemWriteTime(const index: integer): TDateTime; stdcall;
+    function GetItemAttributes(const index: integer): DWORD; stdcall;
     function GetItemIsFolder(const index: integer): boolean; stdcall;
     function GetInArchive: IInArchive;
     procedure ExtractItem(const item: Cardinal; Stream: TStream; test: longbool); stdcall;
@@ -832,8 +834,6 @@ type
     function GetInArchive: IInArchive;
     function GetItemProp(const Item: Cardinal; prop: PROPID): OleVariant;
   protected
-    function GetItemWriteTime(const index: integer): TDateTime;
-    function GetItemAttributes(const index: integer): DWORD;
     // I7zInArchive
     procedure OpenFile(const filename: string); stdcall;
     procedure OpenStream(stream: IInStream); stdcall;
@@ -842,6 +842,8 @@ type
     function GetItemPath(const index: integer): UnicodeString; stdcall;
     function GetItemName(const index: integer): UnicodeString; stdcall;
     function GetItemSize(const index: integer): Cardinal; stdcall; stdcall;
+    function GetItemWriteTime(const index: integer): TDateTime; stdcall;
+    function GetItemAttributes(const index: integer): DWORD; stdcall;
     function GetItemIsFolder(const index: integer): boolean; stdcall;
     procedure ExtractItem(const item: Cardinal; Stream: TStream; test: longbool); stdcall;
     procedure ExtractItems(items: PCardArray; count: cardinal; test: longbool; sender: pointer; callback: T7zGetStreamCallBack); stdcall;
