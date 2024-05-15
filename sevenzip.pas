@@ -16,7 +16,7 @@
 // Original code at https://code.google.com/archive/p/d7zip/
 // Uploaded to GitHub at https://github.com/danielmarschall/d7zip
 
-// Extended by Daniel Marschall, 14 May 2024
+// Current version by Daniel Marschall, 15 May 2024 with the following changes:
 // - Added format GUID: RAR5; https://github.com/geoffsmith82/d7zip/issues/7
 // - Fix Range Check Exception in RINOK(); https://github.com/geoffsmith82/d7zip/pull/8
 // - Avoid unhandled Delphi Exceptions crashing the DLL parent process; https://github.com/geoffsmith82/d7zip/pull/9
@@ -35,11 +35,8 @@
 // - Added LZMA2 to 7z methods (not tested)
 
 // TODO: Possible changes to look closer at...
-// - Added SetProgressCallbackEx method to allow use of anonymous methods as callbacks; https://github.com/ekot1/d7zip/commit/d850b85a05dd58ad6ded2823a635ab28b8cb62ca
-// - https://github.com/wang80919/d7zip/commit/626ad160001bb62671c959e43d052bea5047e950
-//   https://github.com/wang80919/d7zip/commit/a27a324e35f17e83964db18a9db65bc90707b6da
-//   https://github.com/wang80919/d7zip/commit/1d2bdfa82bcd95c4613f775af93f23608f944cb9
-//   https://github.com/wang80919/d7zip/commit/963f2a653b652d561558e022e52006ae599301a0
+// - Add SetProgressCallbackEx method to allow use of anonymous methods as callbacks; https://github.com/ekot1/d7zip/commit/d850b85a05dd58ad6ded2823a635ab28b8cb62ca
+// - Add SetProgressExceptCallback https://github.com/wang80919/d7zip/commit/626ad160001bb62671c959e43d052bea5047e950
 // - Add packages and add namespace to unit; https://github.com/grandchef/d7zip/commit/b043af03cd22729be5c3515e27dfba402d0251f5#diff-3eea9649c6b570534a69a6f393cf9e7e7382bf9b8e6812a687d916d575237e02
 
 
@@ -179,7 +176,7 @@ const
 
 {$ENDREGION}
 
-{$REGION 'IProgress.h'}
+{$REGION 'IProgress.h interfaces ("23170F69-40C1-278A-0000-000000xx0000")'}
 
 //******************************************************************************
 // IProgress.h
@@ -194,7 +191,35 @@ type
 
 {$ENDREGION}
 
-{$REGION 'IPassword.h interfaces'}
+{$REGION 'IFolderArchive.h interfaces ("23170F69-40C1-278A-0000-000100xx0000") - not implemented'}
+
+// not implemented
+// https://github.com/mcmilk/7-Zip/blob/master/CPP/7zip/UI/Agent/IFolderArchive.h
+
+{$ENDREGION}
+
+{$REGION 'IFolder.h interfaces ("23170F69-40C1-278A-0000-000800xx0000") - not implemented'}
+
+// not implemented
+// https://github.com/mcmilk/7-Zip/blob/master/CPP/7zip/UI/FileManager/IFolder.h
+
+{$ENDREGION}
+
+{$REGION 'IFolder.h FOLDER_MANAGER_INTERFACE ("23170F69-40C1-278A-0000-000900xx0000") - not implemented'}
+
+// not implemented
+// https://github.com/mcmilk/7-Zip/blob/master/CPP/7zip/UI/FileManager/IFolder.h
+
+{$ENDREGION}
+
+{$REGION 'PluginInterface.h interfaces ("23170F69-40C1-278A-0000-000A00xx0000") - not implemented'}
+
+// not implemented
+// https://github.com/mcmilk/7-Zip/blob/master/CPP/7zip/UI/FileManager/PluginInterface.h
+
+{$ENDREGION}
+
+{$REGION 'IPassword.h interfaces ("23170F69-40C1-278A-0000-000500xx0000")'}
 
 //******************************************************************************
 // IPassword.h
@@ -1147,7 +1172,7 @@ type
 
 {$ENDREGION}
 
-{$REGION 'Format GUIDs'}
+{$REGION 'Handler/Format GUIDs ("23170F69-40C1-278A-1000-000110xx0000")'}
 
 const
   CLSID_CFormatZip      : TGUID = '{23170F69-40C1-278A-1000-000110010000}'; // [OUT] zip jar xpi
@@ -1163,6 +1188,14 @@ const
   CLSID_CFormatLzma86   : TGUID = '{23170F69-40C1-278A-1000-0001100B0000}'; // [IN ] lzma 86
   CLSID_CFormatXz       : TGUID = '{23170F69-40C1-278A-1000-0001100C0000}'; // [OUT] xz
   CLSID_CFormatPpmd     : TGUID = '{23170F69-40C1-278A-1000-0001100D0000}'; // [IN ] ppmd
+
+  CLSID_CFormatAVB      : TGUID = '{23170F69-40C1-278A-1000-000110C00000}';
+  CLSID_CFormatLP       : TGUID = '{23170F69-40C1-278A-1000-000110C10000}';
+  CLSID_CFormatSparse   : TGUID = '{23170F69-40C1-278A-1000-000110C20000}';
+  CLSID_CFormatAPFS     : TGUID = '{23170F69-40C1-278A-1000-000110C30000}';
+  CLSID_CFormatVhdx     : TGUID = '{23170F69-40C1-278A-1000-000110C40000}';
+  CLSID_CFormatBase64   : TGUID = '{23170F69-40C1-278A-1000-000110C50000}';
+  CLSID_CFormatCOFF     : TGUID = '{23170F69-40C1-278A-1000-000110C60000}';
 
   CLSID_CFormatExt      : TGUID = '{23170F69-40C1-278A-1000-000110C70000}'; // [IN ] ext
   CLSID_CFormatVMDK     : TGUID = '{23170F69-40C1-278A-1000-000110C80000}'; // [IN ] vmdk
