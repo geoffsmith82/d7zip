@@ -28,8 +28,9 @@
 // - Changes to match propids from 7z.dll v16.04, by ekot1 (this also adds new format GUIDs); https://github.com/ekot1/d7zip/commit/149de16032fe461796857e5eee22c70858cdb4b9
 // - Readme: The source version was actually 1.2 from 2011, and not 1.1 from 2009; https://github.com/danielmarschall/d7zip/commit/18cd6d2e20e755f8a261a9195dd9aadb12ae59d0
 // - Fixed: The method in IOutStreamFinish is called OutStreamFinish, not Flush!
-// - Updated some interface definitions (Cardinal=>UInt32, Int64 sometimes UInt32, etc.); partially added missing interfaces from the 7zip source headers
-// - Extended own interfaces to support 64 bit file sizes: https://github.com/wang80919/d7zip/commit/b89d4d7a2bc26928a3e8a1de896feac1a79706ce (and set new GUIDs because the signatures changed!)
+// - Updated interface definitions (Cardinal=>UInt32, Int64 sometimes UInt32, etc.); partially added missing interfaces from the 7zip source headers
+// - Extended own interfaces to support 64 bit file sizes: https://github.com/wang80919/d7zip/commit/b89d4d7a2bc26928a3e8a1de896feac1a79706ce
+//   and removed GUIDs because the signatures changed and we don't need COM interoperability for our interfaces
 // - Added GetItemCompressedSize
 // - Added LZMA2 to 7z methods (not tested)
 
@@ -475,7 +476,7 @@ type
 
   IArchiveExtractCallback = interface(IProgress)
   ['{23170F69-40C1-278A-0000-000600200000}']
-    function GetStream(index: Cardinal; var outStream: ISequentialOutStream;
+    function GetStream(index: UInt32; var outStream: ISequentialOutStream;
         askExtractMode: NAskMode): HRESULT; stdcall;
     // GetStream OUT: S_OK - OK, S_FALSE - skeep this file
     function PrepareOperation(askExtractMode: NAskMode): HRESULT; stdcall;
@@ -510,7 +511,7 @@ type
 
   IInArchiveGetStream = interface
   ['{23170F69-40C1-278A-0000-000600400000}']
-    function GetStream(index: Cardinal; var stream: ISequentialInStream ): HRESULT; stdcall;
+    function GetStream(index: UInt32; var stream: ISequentialInStream ): HRESULT; stdcall;
   end;
 
   IArchiveOpenSetSubArchiveName = interface
@@ -560,7 +561,7 @@ type
 
     function GetArchiveProperty(propID: PROPID; var value: OleVariant): HRESULT; stdcall;
 
-    function GetNumberOfProperties(numProperties: PCardinal): HRESULT; stdcall;
+    function GetNumberOfProperties(numProps: PUInt32): HRESULT; stdcall;
     function GetPropertyInfo(index: UInt32;
         name: PBSTR; propID: PPropID; varType: PVarType): HRESULT; stdcall;
 
@@ -762,12 +763,13 @@ type
     function SetCoderProperties(propIDs: PPropID; props: PROPVARIANT; numProps: UInt32): HRESULT; stdcall;
   end;
 
-(*
-CODER_INTERFACE(ICompressSetCoderProperties, 0x21)
-{
-  STDMETHOD(SetDecoderProperties)(ISequentialInStream *inStream) PURE;
-};
-*)
+  // name conflict?! Is commented out in https://github.com/keithjjones/7z/blob/master/CPP/7zip/ICoder.h
+  (*
+  ICompressSetCoderProperties = interface
+  ['{23170F69-40C1-278A-0000-000400210000}']
+    procedure SetDecoderProperties(inStream: ISequentialInStream);
+  end;
+  *)
 
   ICompressSetDecoderProperties2 = interface
   ['{23170F69-40C1-278A-0000-000400220000}']
@@ -887,17 +889,15 @@ CODER_INTERFACE(ICompressSetCoderProperties, 0x21)
    function SetInStreamSize2(streamIndex: UInt32; inSize: PUInt64): HRESULT; stdcall;
   end;
 
-  (*
   ICompressInSubStreams = interface
   ['{23170F69-40C1-278A-0000-0004003A0000}']
-   function GetNextInSubStream(streamIndexRes: PUInt64; var stream: PISequentialInStream): HRESULT; stdcall;
+   function GetNextInSubStream(streamIndexRes: PUInt64; var stream: ISequentialInStream): HRESULT; stdcall;
   end;
 
   ICompressOutSubStreams = interface
   ['{23170F69-40C1-278A-0000-0004003B0000}']
-   function GetNextOutSubStream(streamIndexRes: PUInt64; var stream: PISequentialOutStream): HRESULT; stdcall;
+   function GetNextOutSubStream(streamIndexRes: PUInt64; var stream: ISequentialOutStream): HRESULT; stdcall;
   end;
-  *)
 
   (*
   ICompressFilter
@@ -954,27 +954,23 @@ CODER_INTERFACE(ICompressSetCoderProperties, 0x21)
     //      (it's for crypto block algorithms).
   end;
 
-  (*
   ICompressCodecsInfo = interface
   ['{23170F69-40C1-278A-0000-000400600000}']
     function GetNumMethods(numMethods: PUInt32): HRESULT; stdcall;
-    function GetProperty(index: UInt32; propID: PROPID; PROPVARIANT *value): HRESULT; stdcall;
-    function CreateDecoder(index: UInt32; const iid: PGUID; void* *coder): HRESULT; stdcall;
-    function CreateEncoder(index: UInt32, const iid: PGUID; void* *coder): HRESULT; stdcall;
+    function GetProperty(index: UInt32; propID: PROPID; var value: PROPVARIANT): HRESULT; stdcall;
+    function CreateDecoder(index: UInt32; const iid: PGUID; var coder: Pointer): HRESULT; stdcall;
+    function CreateEncoder(index: UInt32; const iid: PGUID; var coder: Pointer): HRESULT; stdcall;
   end;
-  *)
 
-  (*
   ISetCompressCodecsInfo = interface
   ['{23170F69-40C1-278A-0000-000400610000}']
-    function SetCompressCodecsInfo(compressCodecsInfo: PICompressCodecsInfo): HRESULT; stdcall;
+    function SetCompressCodecsInfo(compressCodecsInfo: ICompressCodecsInfo): HRESULT; stdcall;
   end;
-  *)
 
   ICryptoProperties = interface
   ['{23170F69-40C1-278A-0000-000400800000}']
-    function SetKey(Data: PByte; size: Cardinal): HRESULT; stdcall;
-    function SetInitVector(data: PByte; size: Cardinal): HRESULT; stdcall;
+    function SetKey(Data: PByte; size: UInt32): HRESULT; stdcall;
+    function SetInitVector(data: PByte; size: UInt32): HRESULT; stdcall;
   end;
 
   ICryptoResetSalt = interface
@@ -1010,14 +1006,12 @@ CODER_INTERFACE(ICompressSetCoderProperties, 0x21)
     function GetDigestSize: UInt32; stdcall;
   end;
 
-  (*
   IHashers = interface
   ['{23170F69-40C1-278A-0000-000400C10000}']
     function GetNumHashers: UInt32;
     function GetHasherProp(index: UInt32; propID: PROPID; var value: PROPVARIANT): HRESULT; stdcall;
-    function CreateHasher(index: UInt32; var hasher: PIHasher): HRESULT; stdcall;
+    function CreateHasher(index: UInt32; var hasher: IHasher): HRESULT; stdcall;
   end;
-  *)
 
 {$ENDREGION}
 
@@ -1028,16 +1022,16 @@ CODER_INTERFACE(ICompressSetCoderProperties, 0x21)
 //******************************************************************************
 
   T7zPasswordCallback = function(sender: Pointer; var password: UnicodeString): HRESULT; stdcall;
-  T7zGetStreamCallBack = function(sender: Pointer; index: Cardinal;
+  T7zGetStreamCallBack = function(sender: Pointer; index: UInt32;
     var outStream: ISequentialOutStream): HRESULT; stdcall;
   T7zProgressCallback = function(sender: Pointer; total: boolean; value: int64): HRESULT; stdcall;
 
+  // Note: This is "our" interface, not an COM interface from 7z.dll
   I7zInArchive = interface
-  ['{018f78e2-08c6-7334-80c7-be202204c546}']
     procedure OpenFile(const filename: string); stdcall;
     procedure OpenStream(stream: IInStream); stdcall;
     procedure Close; stdcall;
-    function GetNumberOfItems: Cardinal; stdcall;
+    function GetNumberOfItems: UInt32; stdcall;
     function GetItemPath(const index: integer): UnicodeString; stdcall;
     function GetItemName(const index: integer): UnicodeString; stdcall;
     function GetItemSize(const index: integer): Int64; stdcall;
@@ -1046,8 +1040,8 @@ CODER_INTERFACE(ICompressSetCoderProperties, 0x21)
     function GetItemAttributes(const index: integer): DWORD; stdcall;
     function GetItemIsFolder(const index: integer): boolean; stdcall;
     function GetInArchive: IInArchive;
-    procedure ExtractItem(const item: Cardinal; Stream: TStream; test: longbool); stdcall;
-    procedure ExtractItems(items: PCardArray; count: cardinal; test: longbool;
+    procedure ExtractItem(const item: UInt32; Stream: TStream; test: longbool); stdcall;
+    procedure ExtractItems(items: PCardArray; count: UInt32; test: longbool;
       sender: pointer; callback: T7zGetStreamCallBack); stdcall;
     procedure ExtractAll(test: longbool; sender: pointer; callback: T7zGetStreamCallBack); stdcall;
     procedure ExtractTo(const path: string); stdcall;
@@ -1057,7 +1051,7 @@ CODER_INTERFACE(ICompressSetCoderProperties, 0x21)
     procedure SetClassId(const classid: TGUID);
     function GetClassId: TGUID;
     property ClassId: TGUID read GetClassId write SetClassId;
-    property NumberOfItems: Cardinal read GetNumberOfItems;
+    property NumberOfItems: UInt32 read GetNumberOfItems;
     property ItemPath[const index: integer]: UnicodeString read GetItemPath;
     property ItemName[const index: integer]: UnicodeString read GetItemName;
     property ItemSize[const index: integer]: Int64 read GetItemSize;
@@ -1066,8 +1060,8 @@ CODER_INTERFACE(ICompressSetCoderProperties, 0x21)
     property InArchive: IInArchive read GetInArchive;
   end;
 
+  // Note: This is "our" interface, not an COM interface from 7z.dll
   I7zOutArchive = interface
-  ['{018f78e2-08c6-7530-8865-95ca0929af15}']
     procedure AddStream(Stream: TStream; Ownership: TStreamOwnership; Attributes: Cardinal;
       CreationTime, LastWriteTime: TFileTime; const Path: UnicodeString;
       IsFolder, IsAnti: boolean); stdcall;
@@ -1084,8 +1078,8 @@ CODER_INTERFACE(ICompressSetCoderProperties, 0x21)
     property ClassId: TGUID read GetClassId write SetClassId;
   end;
 
+  // Note: This is "our" interface, not an COM interface from 7z.dll
   I7zCodec = interface
-  ['{AB48F772-F6B1-411E-907F-1567DB0E93B3}']
 
   end;
 
@@ -1119,7 +1113,6 @@ type
 
 {$REGION 'Methods'}
 
-                                                                                              //  ZIP 7z GZIP BZ2
   procedure SetCompressionLevel(Arch: I7zOutArchive; level: Cardinal);                        //   X   X   X   X
   procedure SetMultiThreading(Arch: I7zOutArchive; ThreadCount: Cardinal);                    //   X   X       X
 
@@ -1387,10 +1380,10 @@ type
 
   T7zCodec = class(T7zPlugin, I7zCodec, ICompressProgressInfo)
   private
-    FGetMethodProperty: function(index: Cardinal; propID: NMethodPropID; var value: OleVariant): HRESULT; stdcall;
-    FGetNumberOfMethods: function(numMethods: PCardinal): HRESULT; stdcall;
-    function GetNumberOfMethods: Cardinal;
-    function GetMethodProperty(index: Cardinal; propID: NMethodPropID): OleVariant;
+    FGetMethodProperty: function(index: UInt32; propID: NMethodPropID; var value: OleVariant): HRESULT; stdcall;
+    FGetNumberOfMethods: function(numMethods: PUInt32): HRESULT; stdcall;
+    function GetNumberOfMethods: UInt32;
+    function GetMethodProperty(index: UInt32; propID: NMethodPropID): OleVariant;
     function GetName(const index: integer): string;
   protected
     function SetRatioInfo(inSize, outSize: PUInt64): HRESULT; stdcall;
@@ -1398,8 +1391,8 @@ type
     function GetDecoder(const index: integer): ICompressCoder;
     function GetEncoder(const index: integer): ICompressCoder;
     constructor Create(const lib: string); override;
-    property MethodProperty[index: Cardinal; propID: NMethodPropID]: OleVariant read GetMethodProperty;
-    property NumberOfMethods: Cardinal read GetNumberOfMethods;
+    property MethodProperty[index: UInt32; propID: NMethodPropID]: OleVariant read GetMethodProperty;
+    property NumberOfMethods: UInt32 read GetNumberOfMethods;
     property Name[const index: integer]: string read GetName;
   end;
 
@@ -1438,13 +1431,13 @@ type
     FExtractSender: Pointer;
     FExtractPath: string;
     function GetInArchive: IInArchive;
-    function GetItemProp(const Item: Cardinal; prop: PROPID): OleVariant;
+    function GetItemProp(const Item: UInt32; prop: PROPID): OleVariant;
   protected
     // I7zInArchive
     procedure OpenFile(const filename: string); stdcall;
     procedure OpenStream(stream: IInStream); stdcall;
     procedure Close; stdcall;
-    function GetNumberOfItems: Cardinal; stdcall;
+    function GetNumberOfItems: UInt32; stdcall;
     function GetItemPath(const index: integer): UnicodeString; stdcall;
     function GetItemName(const index: integer): UnicodeString; stdcall;
     function GetItemSize(const index: integer): Int64; stdcall;
@@ -1452,9 +1445,9 @@ type
     function GetItemWriteTime(const index: integer): TDateTime; stdcall;
     function GetItemAttributes(const index: integer): DWORD; stdcall;
     function GetItemIsFolder(const index: integer): boolean; stdcall;
-    procedure ExtractItem(const item: Cardinal; Stream: TStream; test: longbool); stdcall;
-    procedure ExtractItemToPath(const item: Cardinal; const path: string; test: longbool); stdcall;
-    procedure ExtractItems(items: PCardArray; count: cardinal; test: longbool; sender: pointer; callback: T7zGetStreamCallBack); stdcall;
+    procedure ExtractItem(const item: UInt32; Stream: TStream; test: longbool); stdcall;
+    procedure ExtractItemToPath(const item: UInt32; const path: string; test: longbool); stdcall;
+    procedure ExtractItems(items: PCardArray; count: UInt32; test: longbool; sender: pointer; callback: T7zGetStreamCallBack); stdcall;
     procedure SetPasswordCallback(sender: Pointer; callback: T7zPasswordCallback); stdcall;
     procedure SetProgressCallback(sender: Pointer; callback: T7zProgressCallback); stdcall;
     procedure ExtractAll(test: longbool; sender: pointer; callback: T7zGetStreamCallBack); stdcall;
@@ -1467,7 +1460,7 @@ type
     function SetTotal(total: UInt64): HRESULT;  overload; stdcall;
     function SetCompleted(completeValue: PUInt64): HRESULT; overload; stdcall;
     // IArchiveExtractCallback
-    function GetStream(index: Cardinal; var outStream: ISequentialOutStream;
+    function GetStream(index: UInt32; var outStream: ISequentialOutStream;
       askExtractMode: NAskMode): HRESULT; overload; stdcall;
     function PrepareOperation(askExtractMode: NAskMode): HRESULT; stdcall;
     function SetOperationResult(resultEOperationResult: NExtOperationResult): HRESULT; overload; stdcall;
@@ -1600,7 +1593,7 @@ begin
   CreateObject(TPropVariant(v).puuid^, ICompressCoder, Result);
 end;
 
-function T7zCodec.GetMethodProperty(index: Cardinal;
+function T7zCodec.GetMethodProperty(index: UInt32;
   propID: NMethodPropID): OleVariant;
 var
   hr: HRESULT;
@@ -1615,7 +1608,7 @@ begin
   Result := MethodProperty[index, kMethodName];
 end;
 
-function T7zCodec.GetNumberOfMethods: Cardinal;
+function T7zCodec.GetNumberOfMethods: UInt32;
 var
   hr: HRESULT;
 begin
@@ -1669,7 +1662,7 @@ begin
   Result := UnicodeString(GetItemProp(index, kpidPath));
 end;
 
-function T7zInArchive.GetNumberOfItems: Cardinal; stdcall;
+function T7zInArchive.GetNumberOfItems: UInt32; stdcall;
 begin
   RINOK(FInArchive.GetNumberOfItems(Result));
 end;
@@ -1706,13 +1699,13 @@ begin
   Result := Boolean(GetItemProp(index, kpidIsDir));
 end;
 
-function T7zInArchive.GetItemProp(const Item: Cardinal;
+function T7zInArchive.GetItemProp(const Item: UInt32;
   prop: PROPID): OleVariant;
 begin
   FInArchive.GetProperty(Item, prop, Result);
 end;
 
-procedure T7zInArchive.ExtractItem(const item: Cardinal; Stream: TStream; test: longbool); stdcall;
+procedure T7zInArchive.ExtractItem(const item: UInt32; Stream: TStream; test: longbool); stdcall;
 begin
   FStream := Stream;
   try
@@ -1724,7 +1717,7 @@ begin
   end;
 end;
 
-procedure T7zInArchive.ExtractItemToPath(const item: Cardinal; const path: string; test: longbool); stdcall;
+procedure T7zInArchive.ExtractItemToPath(const item: UInt32; const path: string; test: longbool); stdcall;
 begin
   FExtractPath := IncludeTrailingPathDelimiter(path);
   try
@@ -1736,7 +1729,7 @@ begin
   end;
 end;
 
-function T7zInArchive.GetStream(index: Cardinal;
+function T7zInArchive.GetStream(index: UInt32;
   var outStream: ISequentialOutStream; askExtractMode: NAskMode): HRESULT;
 var
   path: string;
@@ -1928,7 +1921,7 @@ begin
   end;
 end;
 
-procedure T7zInArchive.ExtractItems(items: PCardArray; count: cardinal; test: longbool;
+procedure T7zInArchive.ExtractItems(items: PCardArray; count: UInt32; test: longbool;
   sender: pointer; callback: T7zGetStreamCallBack); stdcall;
 begin
   FExtractCallBack := callback;
@@ -2376,7 +2369,7 @@ begin
   Result := FOutArchive;
 end;
 
-function T7zOutArchive.GetProperty(index: Cardinal; propID: PROPID;
+function T7zOutArchive.GetProperty(index: UInt32; propID: PROPID;
   var value: OleVariant): HRESULT;
 var
   item: T7zBatchItem;
@@ -2431,7 +2424,7 @@ begin
   end;
 end;
 
-function T7zOutArchive.GetStream(index: Cardinal;
+function T7zOutArchive.GetStream(index: UInt32;
   var inStream: ISequentialInStream): HRESULT;
 var
   item: T7zBatchItem;
