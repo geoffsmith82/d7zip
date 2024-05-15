@@ -38,6 +38,8 @@
 // - Add SetProgressCallbackEx method to allow use of anonymous methods as callbacks; https://github.com/ekot1/d7zip/commit/d850b85a05dd58ad6ded2823a635ab28b8cb62ca
 // - Add SetProgressExceptCallback https://github.com/wang80919/d7zip/commit/626ad160001bb62671c959e43d052bea5047e950
 // - Add packages and add namespace to unit; https://github.com/grandchef/d7zip/commit/b043af03cd22729be5c3515e27dfba402d0251f5#diff-3eea9649c6b570534a69a6f393cf9e7e7382bf9b8e6812a687d916d575237e02
+// - Compatible with POSIX: https://github.com/zedalaye/d7zip/commit/7163f9f743c32c5b89e8f7f496ee960c46c4136d
+//                          But this is complex, because we have things like FFileTime, TPropVariant, etc.!
 
 
 unit sevenzip;
@@ -46,7 +48,9 @@ unit sevenzip;
 {$WARN SYMBOL_PLATFORM OFF}
 
 interface
-uses SysUtils, Windows, ActiveX, Classes, Contnrs, System.IOUtils, Math;
+
+uses
+  Windows, ActiveX, SysUtils, Classes, Contnrs, System.IOUtils, Math;
 
 type
   PInt32 = ^Int32;
@@ -1167,6 +1171,7 @@ type
 
   // constructors
 
+  // Please note: Use 7z.dll (taken from the 32/64 bit package of 7zip), not 7za.dll from the extras package!
   function CreateInArchive(const classid: TGUID; const lib: string = '7z.dll'): I7zInArchive;
   function CreateOutArchive(const classid: TGUID; const lib: string = '7z.dll'): I7zOutArchive;
 

@@ -5,51 +5,11 @@
 * Date: 2011-11-29
 * Version: 1.2
 * [Original source at Google Code](https://code.google.com/archive/p/d7zip/source/default/commits)
+* Extended version by Daniel Marschall 2024-05-15 with a lot of changes (see sevenzip.pas header for changelog)
 
-This API use the 7-zip dll (7z.dll) to read and write all 7-zip supported archive formats.  The latest 32-bit and 64-bit version of the 7z.dll is included in the repository (currently 24.4). According to the documentation, file formats listed below are supported, although many may only support decompression/extraction and not creation/compression.
- - zip
- - bz2
- - rar
- - arj
- - z
- - lzh
- - 7z
- - cab
- - nsis
- - lzma
- - lzma86
- - xz
- - ppmd
- - squashFS
- - cramFS
- - apm
- - mslz
- - flv
- - swf
- - swfc
- - ntfs
- - fat
- - mbr
- - vhd
- - pe
- - elf
- - macho
- - udf
- - xar
- - mub
- - hfs
- - dmg
- - compound doc
- - wim
- - iso
- - bkf
- - chm
- - split
- - rpm
- - deb
- - cpio
- - tar
- - gzip
+This API use the 7-zip dll (7z.dll) to read and write all 7-zip supported archive formats.  The latest 32-bit and 64-bit version of the 7z.dll is included in the repository (currently 24.4).
+
+Please note: Use 7z.dll (taken from the 32/64 bit package of 7zip), not 7za.dll from the extras package!
 
   
 ## Reading archive:
