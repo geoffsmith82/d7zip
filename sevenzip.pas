@@ -49,8 +49,7 @@ unit sevenzip;
 
 interface
 
-uses
-uses SysUtils, Windows, ActiveX, Classes, Contnrs;
+uses SysUtils, Windows, ActiveX, Classes, Contnrs, IOUtils, Math;
 
 type
   PInt32 = ^Int32;
@@ -79,10 +78,10 @@ const
   kpidIsDir                 = 6;  // VT_BOOL
   kpidSize                  = 7;  // VT_UI8
   kpidPackSize              = 8;  // VT_UI8
-  kpidAttrib                = 9;  // VT_UI4
-  kpidCTime                 = 10; // VT_FILETIME
-  kpidATime                 = 11; // VT_FILETIME
-  kpidMTime                 = 12; // VT_FILETIME
+  kpidAttributes            = 9;  // VT_UI4
+  kpidCreationTime     = 10; // VT_FILETIME
+  kpidLastAccessTime   = 11; // VT_FILETIME
+  kpidLastWriteTime         = 12; // VT_FILETIME
   kpidSolid                 = 13; // VT_BOOL
   kpidCommented             = 14; // VT_BOOL
   kpidEncrypted             = 15; // VT_BOOL
@@ -1175,6 +1174,24 @@ type
   function CreateInArchive(const classid: TGUID; const lib: string = '7z.dll'): I7zInArchive;
   function CreateOutArchive(const classid: TGUID; const lib: string = '7z.dll'): I7zOutArchive;
 
+type
+  // New interface for the Archive Factory
+  IArchiveFactory = interface
+    ['{D178E493-F317-4F41-AD5C-6A7894329D8F}']
+    function CreateInArchive(const AFileType: string; const lib: string = '7z.dll'): I7zInArchive;
+    function CreateOutArchive(const AFileType: string; const lib: string = '7z.dll'): I7zOutArchive;
+  end;
+
+  // Implementation of the Archive Factory
+  TArchiveFactory = class(TInterfacedObject, IArchiveFactory)
+  private
+    function GetFileTypeFromExtension(const AFileName: string): string;
+  public
+    function CreateInArchive(const AFileType: string; const lib: string = '7z.dll'): I7zInArchive;
+    function CreateOutArchive(const AFileType: string; const lib: string = '7z.dll'): I7zOutArchive;
+  end;
+
+
 {$ENDREGION}
 
 {$REGION 'Handler/Format GUIDs ("23170F69-40C1-278A-1000-000110xx0000")'}
@@ -1258,6 +1275,9 @@ const
 
   // TODO: DEFLATE, DEFLATE64 are not listed in https://www.7-zip.org/7z.html . Is it really supported?
   SevCompressionMethod: array[T7zCompressionMethod] of UnicodeString = ('COPY', 'LZMA', 'BZIP2', 'PPMD', 'DEFLATE', 'DEFLATE64', 'LZMA2');
+
+
+
 
 function DateTimeToFileTime(dt: TDateTime): TFileTime;
 var
@@ -1559,6 +1579,101 @@ type
     destructor Destroy; override;
     property OutArchive: IOutArchive read GetOutArchive;
   end;
+
+{ TArchiveFactory }
+
+function TArchiveFactory.GetFileTypeFromExtension(const AFileName: string): string;
+var
+  FileExt: string;
+begin
+  // Extract the extension and convert to lowercase
+  FileExt := LowerCase(ExtractFileExt(AFileName));
+  if FileExt.StartsWith('.') then
+    Result := FileExt.Substring(1)
+  else
+    Result := FileExt;
+end;
+
+// Factory method to create input archive (I7zInArchive) based on file type
+function TArchiveFactory.CreateInArchive(const AFileType: string; const lib: string): I7zInArchive;
+var
+  FileType : string;
+begin
+  FileType := GetFileTypeFromExtension(AFileType);
+  if SameText(FileType, 'zip') then
+    Result := sevenzip.CreateInArchive(CLSID_CFormatZip, lib)
+  else if SameText(FileType, '7z') then
+    Result := sevenzip.CreateInArchive(CLSID_CFormat7z, lib)
+  else if SameText(FileType, 'rar') then
+    Result := sevenzip.CreateInArchive(CLSID_CFormatRar, lib)
+  else if SameText(FileType, 'bzip2') then
+    Result := sevenzip.CreateInArchive(CLSID_CFormatBZ2, lib)
+  else if SameText(FileType, 'tar') then
+    Result := sevenzip.CreateInArchive(CLSID_CFormatTar, lib)
+  else if SameText(FileType, 'gzip') then
+    Result := sevenzip.CreateInArchive(CLSID_CFormatGzip, lib)
+  else if SameText(FileType, 'iso') then
+    Result := sevenzip.CreateInArchive(CLSID_CFormatIso, lib)
+  else if SameText(FileType, 'cab') then
+    Result := sevenzip.CreateInArchive(CLSID_CFormatCab, lib)
+  else if SameText(FileType, 'lzma') then
+    Result := sevenzip.CreateInArchive(CLSID_CFormatLzma, lib)
+  else if SameText(FileType, 'wim') then
+    Result := sevenzip.CreateInArchive(CLSID_CFormatWim, lib)
+  else if SameText(FileType, 'swf') then
+    Result := sevenzip.CreateInArchive(CLSID_CFormatSwf, lib)
+  else if SameText(FileType, 'rpm') then
+    Result := sevenzip.CreateInArchive(CLSID_CFormatRpm, lib)
+  else if SameText(FileType, 'deb') then
+    Result := sevenzip.CreateInArchive(CLSID_CFormatDeb, lib)
+  else if SameText(FileType, 'chm') then
+    Result := sevenzip.CreateInArchive(CLSID_CFormatChm, lib)
+  else if SameText(FileType, 'nsis') then
+    Result := sevenzip.CreateInArchive(CLSID_CFormatNsis, lib)
+  else
+    raise Exception.Create('Unsupported file type: ' + FileType);
+end;
+
+// Factory method to create output archive (I7zOutArchive) based on file type
+function TArchiveFactory.CreateOutArchive(const AFileType: string; const lib: string): I7zOutArchive;
+var
+  FileType : string;
+begin
+  FileType := GetFileTypeFromExtension(AFileType);
+  if SameText(FileType, 'zip') then
+    Result := sevenzip.CreateOutArchive(CLSID_CFormatZip, lib)
+  else if SameText(FileType, '7z') then
+    Result := sevenzip.CreateOutArchive(CLSID_CFormat7z, lib)
+  else if SameText(FileType, 'rar') then
+    Result := sevenzip.CreateOutArchive(CLSID_CFormatRar, lib)
+  else if SameText(FileType, 'bzip2') then
+    Result := sevenzip.CreateOutArchive(CLSID_CFormatBZ2, lib)
+  else if SameText(FileType, 'tar') then
+    Result := sevenzip.CreateOutArchive(CLSID_CFormatTar, lib)
+  else if SameText(FileType, 'gzip') then
+    Result := sevenzip.CreateOutArchive(CLSID_CFormatGzip, lib)
+  else if SameText(FileType, 'iso') then
+    Result := sevenzip.CreateOutArchive(CLSID_CFormatIso, lib)
+  else if SameText(FileType, 'cab') then
+    Result := sevenzip.CreateOutArchive(CLSID_CFormatCab, lib)
+  else if SameText(FileType, 'lzma') then
+    Result := sevenzip.CreateOutArchive(CLSID_CFormatLzma, lib)
+  else if SameText(FileType, 'wim') then
+    Result := sevenzip.CreateOutArchive(CLSID_CFormatWim, lib)
+  else if SameText(FileType, 'swf') then
+    Result := sevenzip.CreateOutArchive(CLSID_CFormatSwf, lib)
+  else if SameText(FileType, 'rpm') then
+    Result := sevenzip.CreateOutArchive(CLSID_CFormatRpm, lib)
+  else if SameText(FileType, 'deb') then
+    Result := sevenzip.CreateOutArchive(CLSID_CFormatDeb, lib)
+  else if SameText(FileType, 'chm') then
+    Result := sevenzip.CreateOutArchive(CLSID_CFormatChm, lib)
+  else if SameText(FileType, 'nsis') then
+    Result := sevenzip.CreateOutArchive(CLSID_CFormatNsis, lib)
+  else
+    raise Exception.Create('Unsupported file type: ' + AFileType);
+end;
+
 
 function CreateInArchive(const classid: TGUID; const lib: string): I7zInArchive;
 begin
@@ -2081,7 +2196,7 @@ begin
   end;
 
   // TODO: Shouldn't this be done somewhere else? Is the flush method the correct place (if flush=finished)?
-  if (FFileName<>'') and (CompareValue(FWriteTime,0)<>0) then
+  if (FFileName<>'') and (CompareValue(FWriteTime,0) <> 0) then
     TFile.SetLastWriteTime(FFilename, FWriteTime);
 
   inherited;
@@ -2428,7 +2543,7 @@ begin
           TPropVariant(value).vt := VT_FILETIME;
           TPropVariant(value).filetime := item.LastWriteTime;
         end;
-      kpidATime:
+      kpidLastAccessTime:
         begin
           TPropVariant(value).vt := VT_FILETIME;
           TPropVariant(value).filetime := item.LastAccessTime;
