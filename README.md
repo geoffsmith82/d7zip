@@ -5,7 +5,7 @@
 * Date: 15/04/2009
 * Version: 1.1
 
-This API use the 7-zip dll (7z.dll) to read and write all 7-zip supported archive formats.  The latest 32-bit and 64-bit version of the 7z.dll is included in the repository (currently 22.01). According to the documentation, file formats listed below are supported, although many may only support decompression/extraction and not creation/compression.
+This API use the 7-zip dll (7z.dll) to read and write all 7-zip supported archive formats.  The latest 32-bit and 64-bit version of the 7z.dll is included in the repository (currently 24.07). According to the documentation, file formats listed below are supported, although many may only support decompression/extraction and not creation/compression.
  - zip
  - bz2
  - rar
@@ -55,21 +55,27 @@ This API use the 7-zip dll (7z.dll) to read and write all 7-zip supported archiv
 ### Extract to path:
 
 ```pascal
- with CreateInArchive(CLSID_CFormatZip) do
- begin
-   OpenFile('c:\test.zip');
-   ExtractTo('c:\test');
- end;
+var
+  archive : I7zInArchive;
+begin
+  archive := CreateInArchive(CLSID_CFormatZip);
+  archive.OpenFile('c:\test.zip');
+  archive.ExtractTo('c:\test');
+end;
+
 ```
 ### Get file list:
 ```Pascal
- with CreateInArchive(CLSID_CFormat7z) do
- begin
-   OpenFile('c:\test.7z');
-   for i := 0 to NumberOfItems - 1 do
-    if not ItemIsFolder[i] then
-      Writeln(ItemPath[i]);
- end;
+var
+  archive : I7zInArchive;
+  i : Integer;
+begin
+  archive := CreateInArchive(CLSID_CFormat7z);
+  archive.OpenFile('c:\test.7z');
+  for i := 0 to archive.NumberOfItems - 1 do
+    if not archive.ItemIsFolder[i] then
+      Writeln(archive.ItemPath[i]);
+end;
 ```
 ### Extract to stream
 ```Pascal
@@ -93,95 +99,98 @@ end;
 
 procedure TMainForm.ExtractClick(Sender: TObject);
 var
+  archive : I7zInArchive;
   i: integer;
   items: array[0..2] of Cardinal;
 begin
-  with CreateInArchive(CLSID_CFormat7z) do
-  begin
-    OpenFile('c:\test.7z');
+  archive := CreateInArchive(CLSID_CFormat7z);
+  archive.OpenFile('c:\test.7z');
     // items must be sorted by index!
-    items[0] := 0;
-    items[1] := 1;
-    items[2] := 2;
-    ExtractItems(@items, Length(items), false, nil, GetStreamCallBack);
-  end;
+  items[0] := 0;
+  items[1] := 1;
+  items[2] := 2;
+  archive.ExtractItems(@items, Length(items), false, nil, GetStreamCallBack);
 end;
+
 ```
 ### Open stream
 ```Pascal
- with CreateInArchive(CLSID_CFormatZip) do
- begin
-   OpenStream(T7zStream.Create(TFileStream.Create('c:\test.zip', fmOpenRead), soOwned));
-   OpenStream(aStream, soReference);
+var
+  archive : I7zInArchive;
+begin
+  archive := CreateInArchive(CLSID_CFormatZip) do
+  archive.OpenStream(T7zStream.Create(TFileStream.Create('c:\test.zip', fmOpenRead), soOwned));
+  archive.OpenStream(aStream, soReference);
    ...
- end;
+end;
 ```
 ### Progress bar
 ```Pascal
- function ProgressCallback(sender: Pointer; total: boolean; value: int64): HRESULT; stdcall;
- begin
-   if total then
-     Mainform.ProgressBar.Max := value else
-     Mainform.ProgressBar.Position := value;
-   Result := S_OK;
- end;
+function ProgressCallback(sender: Pointer; total: boolean; value: int64): HRESULT; stdcall;
+begin
+  if total then
+    Mainform.ProgressBar.Max := value 
+  else
+    Mainform.ProgressBar.Position := value;
+  Result := S_OK;
+end;
 
- procedure TMainForm.ExtractClick(Sender: TObject);
- begin
-   with CreateInArchive(CLSID_CFormatZip) do
-   begin
-     OpenFile('c:\test.zip');
-     SetProgressCallback(nil, ProgressCallback);
-     ...
-   end;
- end;
+procedure TMainForm.ExtractClick(Sender: TObject);
+var
+  archive : I7zInArchive;
+begin
+  archive := CreateInArchive(CLSID_CFormatZip);
+  archive.OpenFile('c:\test.zip');
+  archive.SetProgressCallback(nil, ProgressCallback);
+  ...
+end;
 ```
 ### Password
 ```Pascal
- function PasswordCallback(sender: Pointer; var password: WideString): HRESULT; stdcall;
- begin
-   // call a dialog box ...
-   password := 'password';
-   Result := S_OK;
- end;
+function PasswordCallback(sender: Pointer; var password: WideString): HRESULT; stdcall;
+begin
+  // call a dialog box ...
+  password := 'password';
+  Result := S_OK;
+end;
 
- procedure TMainForm.ExtractClick(Sender: TObject);
- begin
-   with CreateInArchive(CLSID_CFormatZip) do
-   begin
-     // using callback
-     SetPasswordCallback(nil, PasswordCallback);
-     // or setting password directly
-     SetPassword('password');
-     OpenFile('c:\test.zip');
+procedure TMainForm.ExtractClick(Sender: TObject);
+var
+  archive : I7zInArchive;
+begin
+  archive := CreateInArchive(CLSID_CFormatZip);
+  // using callback
+  archive.SetPasswordCallback(nil, PasswordCallback);
+  // or setting password directly
+  archive.SetPassword('password');
+  archive.OpenFile('c:\test.zip');
      ...
-   end;
- end;
+end;
 ```
 ### Writing archive
 ```Pascal
- procedure TMainForm.ExtractAllClick(Sender: TObject);
- var
-   Arch: I7zOutArchive;
- begin
-   Arch := CreateOutArchive(CLSID_CFormat7z);
-   // add a file
-   Arch.AddFile('c:\test.bin', 'folder\test.bin');
-   // add files using willcards and recursive search
-   Arch.AddFiles('c:\test', 'folder', '*.pas;*.dfm', true);
-   // add a stream
-   Arch.AddStream(aStream, soReference, faArchive, CurrentFileTime, CurrentFileTime, 'folder\test.bin', false, false);
-   // compression level
-   SetCompressionLevel(Arch, 5);
-   // compression method if <> LZMA
-   SevenZipSetCompressionMethod(Arch, m7BZip2);
-   // add a progress bar ...
-   Arch.SetProgressCallback(...);
-   // set a password if necessary
-   Arch.SetPassword('password');
-   // Save to file
-   Arch.SaveToFile('c:\test.zip');
-   // or a stream
-   Arch.SaveToStream(aStream);
- end;
+procedure TMainForm.ExtractAllClick(Sender: TObject);
+var
+  Arch: I7zOutArchive;
+begin
+  Arch := CreateOutArchive(CLSID_CFormat7z);
+  // add a file
+  Arch.AddFile('c:\test.bin', 'folder\test.bin');
+  // add files using willcards and recursive search
+  Arch.AddFiles('c:\test', 'folder', '*.pas;*.dfm', true);
+  // add a stream
+  Arch.AddStream(aStream, soReference, faArchive, CurrentFileTime, CurrentFileTime, 'folder\test.bin', false, false);
+  // compression level
+  SetCompressionLevel(Arch, 5);
+  // compression method if <> LZMA
+  SevenZipSetCompressionMethod(Arch, m7BZip2);
+  // add a progress bar ...
+  Arch.SetProgressCallback(...);
+  // set a password if necessary
+  Arch.SetPassword('password');
+  // Save to file
+  Arch.SaveToFile('c:\test.zip');
+  // or a stream
+  Arch.SaveToStream(aStream);
+end;
 ```
