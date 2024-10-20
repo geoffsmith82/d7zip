@@ -9,6 +9,8 @@ uses
   System.Variants,
   System.Classes,
   System.IOUtils,
+  System.ImageList,
+  Vcl.ImgList,
   Vcl.Graphics,
   Vcl.Controls,
   Vcl.Forms,
@@ -18,12 +20,14 @@ uses
   Vcl.StdCtrls,
   Vcl.Menus,
   Vcl.ComCtrls,
+  Shellapi,
   JvExStdCtrls,
   JvListBox,
   JvDriveCtrls,
   JvCombobox,
   sevenzip,
-  VirtualTrees;
+  VirtualTrees
+  ;
 
 type
   PFileItem = ^TFileItem;
@@ -50,16 +54,22 @@ type
     N1: TMenuItem;
     N2: TMenuItem;
     VirtualStringTree1: TVirtualStringTree;
+    ImageList1: TImageList;
     procedure Exit1Click(Sender: TObject);
     procedure FormCreate(Sender: TObject);
     procedure JvFileListBox1Change(Sender: TObject);
     procedure VirtualStringTree1GetText(Sender: TBaseVirtualTree; Node: PVirtualNode; Column: TColumnIndex; TextType: TVSTTextType; var CellText: string);
+    procedure VirtualStringTree1GetImageIndexEx(Sender: TBaseVirtualTree;
+      Node: PVirtualNode; Kind: TVTImageKind; Column: TColumnIndex;
+      var Ghosted: Boolean; var ImageIndex: TImageIndex;
+      var ImageList: TCustomImageList);
   private
     dllPath: string;
     archive: I7zInArchive;
     factory: IArchiveFactory;
     procedure PopulateVirtualTree;
     function FindOrAddNode(Parent: PVirtualNode; const Name: string; IsFolder: Boolean): PVirtualNode;
+    procedure LoadShellIcons;
   public
     { Public declarations }
   end;
@@ -81,10 +91,46 @@ begin
   factory := TArchiveFactory.Create;
   dllPath := TPath.Combine(ExtractFilePath(ParamStr(0)), '..\..\..\..\bin64\7z.dll');
   dllPath := TPath.GetFullPath(dllPath);
+  LoadShellIcons;
 
   // Set up the VirtualStringTree
   VirtualStringTree1.NodeDataSize := SizeOf(TFileItem);
 end;
+
+
+procedure TForm1.LoadShellIcons;
+var
+  FileInfo: SHFILEINFO;
+  FolderIcon, FileIcon: TIcon;
+begin
+  // Set up ImageList to support 32-bit icons (with alpha transparency)
+  ImageList1.ColorDepth := cd32Bit;
+  ImageList1.Masked := True;
+
+  // Create TIcon instances for folder and file icons
+  FolderIcon := TIcon.Create;
+  FileIcon := TIcon.Create;
+  try
+    // Retrieve the folder icon using SHGetFileInfo
+    SHGetFileInfo('C:\WINDOWS\', FILE_ATTRIBUTE_DIRECTORY, FileInfo, SizeOf(FileInfo), SHGFI_ICON or SHGFI_SMALLICON or SHGFI_USEFILEATTRIBUTES);
+    FolderIcon.Handle := FileInfo.hIcon;  // Assign the icon handle to the TIcon
+    ImageList1.AddIcon(FolderIcon);       // Add the folder icon to the ImageList
+    DestroyIcon(FileInfo.hIcon);          // Free the system icon handle
+
+    // Retrieve the generic file icon using SHGetFileInfo
+    SHGetFileInfo('C:\dummy.txt', FILE_ATTRIBUTE_NORMAL, FileInfo, SizeOf(FileInfo), SHGFI_ICON or SHGFI_SMALLICON or SHGFI_USEFILEATTRIBUTES);
+    FileIcon.Handle := FileInfo.hIcon;    // Assign the icon handle to the TIcon
+    ImageList1.AddIcon(FileIcon);         // Add the file icon to the ImageList
+    DestroyIcon(FileInfo.hIcon);          // Free the system icon handle
+
+  finally
+    // Free the TIcon instances
+    FolderIcon.Free;
+    FileIcon.Free;
+  end;
+end;
+
+
 
 procedure TForm1.JvFileListBox1Change(Sender: TObject);
 begin
@@ -162,6 +208,30 @@ begin
   begin
     CellText := Data.ItemName; // Display the item name in the tree
   end;
+end;
+
+procedure TForm1.VirtualStringTree1GetImageIndexEx(Sender: TBaseVirtualTree;
+  Node: PVirtualNode; Kind: TVTImageKind; Column: TColumnIndex;
+  var Ghosted: Boolean; var ImageIndex: TImageIndex;
+  var ImageList: TCustomImageList);
+var
+  Data: PFileItem;
+begin
+  ImageList := ImageList1;
+  Data := Sender.GetNodeData(Node);
+  if Kind = ikState then
+    Exit;
+
+  if Assigned(Data) then
+  begin
+    // Assign the correct icon index based on whether it's a folder or file
+
+    if Data.IsFolder then
+      ImageIndex := 1  // Folder icon (index 0 in ImageList1)
+    else
+      ImageIndex := 0; // File icon (index 1 in ImageList1)
+  end;
+
 end;
 
 end.

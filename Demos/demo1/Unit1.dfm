@@ -92,14 +92,15 @@ object Form1: TForm1
     Panels = <>
   end
   object VirtualStringTree1: TVirtualStringTree
-    Left = 598
-    Top = 13
+    Left = 583
+    Top = 0
     Width = 883
-    Height = 1008
+    Height = 1058
     Margins.Left = 8
     Margins.Top = 8
     Margins.Right = 8
     Margins.Bottom = 8
+    Align = alLeft
     Colors.BorderColor = 15987699
     Colors.DisabledColor = clGray
     Colors.DropMarkColor = 15385233
@@ -127,9 +128,14 @@ object Form1: TForm1
     Margin = 10
     TabOrder = 2
     TextMargin = 10
+    TreeOptions.SelectionOptions = [toFullRowSelect, toMultiSelect]
     OnGetText = VirtualStringTree1GetText
+    OnGetImageIndexEx = VirtualStringTree1GetImageIndexEx
     Touch.InteractiveGestures = [igPan, igPressAndTap]
     Touch.InteractiveGestureOptions = [igoPanSingleFingerHorizontal, igoPanSingleFingerVertical, igoPanInertia, igoPanGutter, igoParentPassthrough]
+    ExplicitLeft = 598
+    ExplicitTop = 13
+    ExplicitHeight = 1008
     Columns = <>
   end
   object MainMenu: TMainMenu
@@ -166,5 +172,11 @@ object Form1: TForm1
         OnClick = Exit1Click
       end
     end
+  end
+  object ImageList1: TImageList
+    Height = 24
+    Width = 24
+    Left = 980
+    Top = 320
   end
 end
