@@ -52,6 +52,9 @@ This API use the 7-zip dll (7z.dll) to read and write all 7-zip supported archiv
  - cpio
  - tar
  - gzip
+ 
+## 7-Zip Demo
+  This demo currently allows you to locate archives on your hard disk and list the contents of archive. It uses VirtualTree that you can get in the GetIt package manager in Delphi.
 
   
 ## Reading archive:
