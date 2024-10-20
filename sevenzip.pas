@@ -1656,6 +1656,8 @@ begin
     Result := sevenzip.CreateOutArchive(CLSID_CFormatIso, lib)
   else if SameText(FileType, 'cab') then
     Result := sevenzip.CreateOutArchive(CLSID_CFormatCab, lib)
+  else if SameText(FileType, 'z') then
+    Result := sevenzip.CreateOutArchive(CLSID_CFormatZ, lib)
   else if SameText(FileType, 'lzma') then
     Result := sevenzip.CreateOutArchive(CLSID_CFormatLzma, lib)
   else if SameText(FileType, 'wim') then
@@ -1666,6 +1668,18 @@ begin
     Result := sevenzip.CreateOutArchive(CLSID_CFormatRpm, lib)
   else if SameText(FileType, 'deb') then
     Result := sevenzip.CreateOutArchive(CLSID_CFormatDeb, lib)
+  else if SameText(FileType, 'dmg') then
+    Result := sevenzip.CreateOutArchive(CLSID_CFormatDmg, lib)
+  else if SameText(FileType, 'vhd') then
+    Result := sevenzip.CreateOutArchive(CLSID_CFormatVhd, lib)
+  else if SameText(FileType, 'vhdx') then
+    Result := sevenzip.CreateOutArchive(CLSID_CFormatVhdx, lib)
+  else if SameText(FileType, 'vmdk') then
+    Result := sevenzip.CreateOutArchive(CLSID_CFormatVmdk, lib)
+  else if SameText(FileType, 'qcow') then
+    Result := sevenzip.CreateOutArchive(CLSID_CFormatQCow, lib)
+  else if SameText(FileType, 'vdi') then
+    Result := sevenzip.CreateOutArchive(CLSID_CFormatVdi, lib)
   else if SameText(FileType, 'chm') then
     Result := sevenzip.CreateOutArchive(CLSID_CFormatChm, lib)
   else if SameText(FileType, 'nsis') then
