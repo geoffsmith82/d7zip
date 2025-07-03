@@ -49,7 +49,9 @@ unit sevenzip;
 
 interface
 
-uses SysUtils, Windows, ActiveX, Classes, Contnrs, IOUtils, Math;
+uses
+  System.SysUtils, Winapi.Windows, Winapi.ActiveX, System.Classes, System.Contnrs,
+  System.Generics.Collections, System.IOUtils, System.Math;
 
 type
   PInt32 = ^Int32;
@@ -1100,7 +1102,7 @@ type
     procedure SetProgressCallback(sender: Pointer; callback: T7zProgressCallback); stdcall;
     procedure ClearBatch; stdcall;
     procedure SetPassword(const password: UnicodeString); stdcall;
-    procedure SetPropertie(name: UnicodeString; value: OleVariant); stdcall;
+    procedure SetProperty(name: UnicodeString; value: TPropVariant); stdcall;
     procedure SetClassId(const classid: TGUID);
     function GetClassId: TGUID;
     property ClassId: TGUID read GetClassId write SetClassId;
@@ -1211,7 +1213,7 @@ const
   CLSID_CFormatXz       : TGUID = '{23170F69-40C1-278A-1000-0001100C0000}'; // [OUT] xz
   CLSID_CFormatPpmd     : TGUID = '{23170F69-40C1-278A-1000-0001100D0000}'; // [IN ] ppmd
   CLSID_CFormatZStd     : TGUID = '{23170F69-40C1-278A-1000-0001100E0000}'; // zstd
-  
+
   CLSID_CFormatLvm      : TGUID = '{23170F69-40C1-278A-1000-000110BF0000}'; // lvm
 
   CLSID_CFormatAVB      : TGUID = '{23170F69-40C1-278A-1000-000110C00000}';
@@ -1308,21 +1310,35 @@ begin
     raise Exception.Create(SysErrorMessage(Cardinal(hr)));
 end;
 
-procedure SetCardinalProperty(arch: I7zOutArchive; const name: UnicodeString; card: Cardinal);
+procedure SetCardinalProperty(Arch: I7zOutArchive; const Name: UnicodeString; Card: Cardinal);
 var
-  value: OleVariant;
+  Value: TPropVariant;
 begin
-  TPropVariant(value).vt := VT_UI4;
-  TPropVariant(value).ulVal := card;
-  arch.SetPropertie(name, value);
+  PropVariantInit(Value);
+  Value.vt := VT_UI4;
+  Value.ulVal := Card;
+  Arch.SetProperty(Name, Value);
 end;
 
-procedure SetBooleanProperty(arch: I7zOutArchive; const name: UnicodeString; bool: boolean);
+procedure SetStringProperty(Arch: I7zOutArchive; const Name: UnicodeString; const Str: UnicodeString);
+var
+  Value: TPropVariant;
 begin
-  case bool of
-    true: arch.SetPropertie(name, 'ON');
-    false: arch.SetPropertie(name, 'OFF');
+  PropVariantInit(Value);
+  Value.vt := VT_BSTR;
+  Value.bstrVal := PWideChar(Str);
+  Arch.SetProperty(Name, Value);
+end;
+
+procedure SetBooleanProperty(Arch: I7zOutArchive; const Name: UnicodeString; Bool: Boolean);
+var
+  BoolStr: UnicodeString;
+begin
+  case Bool of
+    True: BoolStr := 'ON';
+    False: BoolStr := 'OFF';
   end;
+  SetStringProperty(Arch, Name, BoolStr);
 end;
 
 procedure SetCompressionLevel(Arch: I7zOutArchive; level: Cardinal);
@@ -1337,12 +1353,12 @@ end;
 
 procedure SetCompressionMethod(Arch: I7zOutArchive; method: TZipCompressionMethod);
 begin
-  Arch.SetPropertie('M', ZipCompressionMethod[method]);
+  SetStringProperty(Arch, 'M', ZipCompressionMethod[method]);
 end;
 
 procedure SetEncryptionMethod(Arch: I7zOutArchive; method: TZipEncryptionMethod);
 begin
-  Arch.SetPropertie('EM', ZipEncryptionMethod[method]);
+  SetStringProperty(Arch, 'EM', ZipEncryptionMethod[method]);
 end;
 
 procedure SetDictionnarySize(Arch: I7zOutArchive; size: Cardinal);
@@ -1372,12 +1388,12 @@ end;
 
 procedure SevenZipSetCompressionMethod(Arch: I7zOutArchive; method: T7zCompressionMethod);
 begin
-  Arch.SetPropertie('0', SevCompressionMethod[method]);
+  SetStringProperty(Arch, '0', SevCompressionMethod[method]);
 end;
 
 procedure SevenZipSetBindInfo(Arch: I7zOutArchive; const bind: UnicodeString);
 begin
-  arch.SetPropertie('B', bind);
+  SetStringProperty(Arch, 'B', bind);
 end;
 
 procedure SevenZipSetSolidSettings(Arch: I7zOutArchive; solid: boolean);
@@ -1546,6 +1562,7 @@ type
     FProgressCallback: T7zProgressCallback;
     FProgressSender: Pointer;
     FPassword: UnicodeString;
+    FProperties: TDictionary<PWideChar, TPropVariant>;
     function GetOutArchive: IOutArchive;
   protected
     // I7zOutArchive
@@ -1559,7 +1576,7 @@ type
     procedure SetProgressCallback(sender: Pointer; callback: T7zProgressCallback); stdcall;
     procedure ClearBatch; stdcall;
     procedure SetPassword(const password: UnicodeString); stdcall;
-    procedure SetPropertie(name: UnicodeString; value: OleVariant); stdcall;
+    procedure SetProperty(name: UnicodeString; value: TPropVariant); stdcall;
     // IProgress
     function SetTotal(total: UInt64): HRESULT; stdcall;
     function SetCompleted(completeValue: PUInt64): HRESULT; stdcall;
@@ -2420,7 +2437,7 @@ var
           end;
         end;
       until FindNext(f) <> 0;
-      SysUtils.FindClose(f);
+      System.SysUtils.FindClose(f);
     end;
 
     for i := 0 to willlist.Count - 1 do
@@ -2447,7 +2464,7 @@ var
           FBatchList.Add(item);
         end;
       until FindNext(f) <> 0;
-      SysUtils.FindClose(f);
+      System.SysUtils.FindClose(f);
     end;
   end;
 begin
@@ -2494,6 +2511,7 @@ constructor T7zOutArchive.Create(const lib: string);
 begin
   inherited;
   FBatchList := TObjectList.Create;
+  FProperties := TDictionary<PWideChar, TPropVariant>.Create;
   FProgressCallback := nil;
   FProgressSender := nil;
 end;
@@ -2529,6 +2547,7 @@ destructor T7zOutArchive.Destroy;
 begin
   FOutArchive := nil;
   FBatchList.Free;
+  FProperties.Free;
   inherited;
 end;
 
@@ -2699,15 +2718,34 @@ begin
   FProgressSender := sender;
 end;
 
-procedure T7zOutArchive.SetPropertie(name: UnicodeString;
-  value: OleVariant);
+procedure T7zOutArchive.SetProperty(name: UnicodeString; value: TPropVariant);
+const
+  // only a random value; the number of adjustable properties must fit into it
+  PROPERTIES_HIGH = 31;
 var
   intf: ISetProperties;
-  p: PWideChar;
+  PropName: PWideChar;
+  Names: array[0..PROPERTIES_HIGH] of PWideChar;
+  Values: array[0..PROPERTIES_HIGH] of TPropVariant;
+  I: Integer;
 begin
   intf := OutArchive as ISetProperties;
-  p := PWideChar(name);
-  RINOK(intf.SetProperties(@p, @TPropVariant(value), 1));
+  PropName := PWideChar(name);
+
+  if FProperties.ContainsKey(PropName) then
+    FProperties[PropName] := value
+  else
+    FProperties.Add(PropName, value);
+
+  I := 0;
+  for PropName in FProperties.Keys do
+  begin
+    Names[I] := PropName;
+    Values[I] := FProperties[PropName];
+    Inc(I);
+  end;
+
+  RINOK(intf.SetProperties(@Names, @Values, I));
 end;
 
 function T7zOutArchive.SetTotal(total: UInt64): HRESULT;
@@ -2728,3 +2766,4 @@ begin
 end;
 
 end.
+
