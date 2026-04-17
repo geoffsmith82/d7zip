@@ -1867,7 +1867,7 @@ end;
 
 function T7zInArchive.GetItemAttributes(const index: integer): DWORD;
 begin
-  result := DWORD(GetItemProp(index, kpidAttributes));
+  result := DWORD(Int64(GetItemProp(index, kpidAttributes)));
 end;
 
 function T7zInArchive.GetItemIsFolder(const index: integer): boolean; stdcall;
