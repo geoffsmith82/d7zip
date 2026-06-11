@@ -16,6 +16,22 @@
 // Original code at https://code.google.com/archive/p/d7zip/
 // Uploaded to GitHub at https://github.com/danielmarschall/d7zip
 
+// Current version by Christian Allen, 08 June 2026 with the following changes:
+// - Added support for the following file extensions:
+// 	- in TArchiveFactory.CreateInArchive: cbz, cb7, cbr, bz2, xz, 001
+// 	- in TArchiveFactory.CreateOutArchive: cbz, cb7, cbr, bz2, xz
+// - Major change:
+// 	Following extensive testing with varying methods and properties:
+// 	- The observed behavior was typical of a COM component that interprets each call to ISetProperties.SetProperties(...) as a completely new set of properties, rather than an addition to those already defined.
+// 		This made it impossible to precisely adjust the properties. As a result, the archives were identical even though 7-Zip itself could create archives of varying sizes.
+// 		Similarly, the compression time was often longer than normal.
+// 	- New functionality: Properties are added to a list (actually two: FPropNames and FPropValues) with each addition requested (SetCardinalProperty, SetBooleanProperty, etc.).
+// 		They are applied all at once just before compression (ApplyProperties in SaveToStream). This ensures that all properties are taken into account.
+// 	- New: SetStringProperty is used to add a string property.
+// 		Used in SetCompressionMethod, SetEncryptionMethod, SevenZipSetCompressionMethod, and SevenZipSetBindInfo.
+// - New demo: see demo2 folder.
+// (Tested with version 24.04, 25.01 and 26.01 of 7z.dll)
+
 // Current version by Daniel Marschall, 15 Feb 2025 with the following changes:
 // - Marked unit as "platform"
 // - Used units are now fully qualified names
@@ -718,7 +734,7 @@ type
 
   ISetProperties = interface
   ['{23170F69-40C1-278A-0000-000600030000}']
-    function SetProperties(names: PPWideChar; values: PPROPVARIANT; numProps: UInt32): HRESULT; stdcall;
+	 function SetProperties(names: PPWideChar; values: PPROPVARIANT; numProps: UInt32): HRESULT; stdcall;
   end;
 
   IArchiveKeepModeForNextOpen = interface
@@ -1106,8 +1122,9 @@ type
     procedure SetProgressCallback(sender: Pointer; callback: T7zProgressCallback); stdcall;
     procedure ClearBatch; stdcall;
     procedure SetPassword(const password: UnicodeString); stdcall;
-    procedure SetPropertie(name: UnicodeString; value: OleVariant); stdcall;
-    procedure SetClassId(const classid: TGUID);
+//	 procedure SetPropertie(name: UnicodeString; value: OleVariant); stdcall;
+	 procedure SetPropertie(name: UnicodeString; const value: TPropVariant); stdcall;
+	 procedure SetClassId(const classid: TGUID);
     function GetClassId: TGUID;
     property ClassId: TGUID read GetClassId write SetClassId;
   end;
@@ -1146,6 +1163,10 @@ type
 {$ENDREGION}
 
 {$REGION 'Methods'}
+
+  procedure SetStringProperty(arch: I7zOutArchive; const name: UnicodeString; const s: UnicodeString);// CAL - 08/06/2026
+  procedure SetCardinalProperty(arch: I7zOutArchive; const name: UnicodeString; card: Cardinal);
+  procedure SetBooleanProperty(arch: I7zOutArchive; const name: UnicodeString; bool: boolean);
 
   procedure SetCompressionLevel(Arch: I7zOutArchive; level: Cardinal);                        //   X   X   X   X
   procedure SetMultiThreading(Arch: I7zOutArchive; ThreadCount: Cardinal);                    //   X   X       X
@@ -1311,9 +1332,25 @@ end;
 procedure RINOK(const hr: HRESULT);
 begin
   if hr <> S_OK then
-    raise Exception.Create(SysErrorMessage(Cardinal(hr)));
+	 raise Exception.Create(SysErrorMessage(Cardinal(hr)));
 end;
 
+{ -----------------------------------------------------------------------------
+ 08/06/2026 - CAL
+----------------------------------------------------------------------------- }
+ procedure SetStringProperty(arch: I7zOutArchive; const name, s: UnicodeString);
+var
+	value: TPropVariant;
+begin
+	PropVariantInit(value);
+	value.vt := VT_BSTR;
+	value.bstrVal := SysAllocString(PWideChar(s));
+	arch.SetPropertie(name, value);
+end;
+
+{ -----------------------------------------------------------------------------
+ original function
+-----------------------------------------------------------------------------
 procedure SetCardinalProperty(arch: I7zOutArchive; const name: UnicodeString; card: Cardinal);
 var
   value: OleVariant;
@@ -1323,12 +1360,53 @@ begin
   arch.SetPropertie(name, value);
 end;
 
+{ -----------------------------------------------------------------------------
+ 08/06/2026 - CAL
+ Using OleVariant and then casting (see above) worked "by chance" on older Delphi Win32 systems.
+ However:
+ • Delphi 12,...
+ • Win64,
+ • modern memory alignment,
+ • stricter ARC/RTTI/variant management,
+ => make this casting method risky.
+ Now use TPropVariant instead
+----------------------------------------------------------------------------- }
+procedure SetCardinalProperty(arch: I7zOutArchive; const name: UnicodeString; card: Cardinal);
+var
+	value: TPropVariant;
+begin
+	PropVariantInit(value);
+	value.vt := VT_UI4;
+	value.ulVal := card;
+	arch.SetPropertie(name, value);
+end;
+
+{ -----------------------------------------------------------------------------
+ original function
+-----------------------------------------------------------------------------
 procedure SetBooleanProperty(arch: I7zOutArchive; const name: UnicodeString; bool: boolean);
 begin
   case bool of
-    true: arch.SetPropertie(name, 'ON');
-    false: arch.SetPropertie(name, 'OFF');
+	 true: arch.SetPropertie(name, 'ON');
+	 false: arch.SetPropertie(name, 'OFF');
   end;
+end;
+
+{ -----------------------------------------------------------------------------
+ 08/06/2026 - CAL
+ TPropVariant used for 64 bits and latest compiler compatibility
+----------------------------------------------------------------------------- }
+procedure SetBooleanProperty(arch: I7zOutArchive; const name: UnicodeString; bool: Boolean);
+var
+	value: TPropVariant;
+begin
+	PropVariantInit(value);
+	value.vt := VT_BOOL;
+	if bool then
+		value.boolVal := WordBool(True)
+	else
+		value.boolVal := WordBool(False);
+	arch.SetPropertie(name, value);
 end;
 
 procedure SetCompressionLevel(Arch: I7zOutArchive; level: Cardinal);
@@ -1343,12 +1421,14 @@ end;
 
 procedure SetCompressionMethod(Arch: I7zOutArchive; method: TZipCompressionMethod);
 begin
-  Arch.SetPropertie('M', ZipCompressionMethod[method]);
+//  Arch.SetPropertie('M', ZipCompressionMethod[method]);
+	SetStringProperty(arch,'M', ZipCompressionMethod[method]); // CAL - 08/06/2026
 end;
 
 procedure SetEncryptionMethod(Arch: I7zOutArchive; method: TZipEncryptionMethod);
 begin
-  Arch.SetPropertie('EM', ZipEncryptionMethod[method]);
+//  Arch.SetPropertie('EM', ZipEncryptionMethod[method]);
+	SetStringProperty(arch,'EM', ZipEncryptionMethod[method]);// CAL - 08/06/2026
 end;
 
 procedure SetDictionnarySize(Arch: I7zOutArchive; size: Cardinal);
@@ -1358,7 +1438,7 @@ end;
 
 procedure SetMemorySize(Arch: I7zOutArchive; size: Cardinal);
 begin
-  SetCardinalProperty(arch, 'MEM', size);
+  SetCardinalProperty(arch, 'MEM', size); // Warning ! Value is in Mb
 end;
 
 procedure SetDeflateNumPasses(Arch: I7zOutArchive; pass: Cardinal);
@@ -1378,12 +1458,14 @@ end;
 
 procedure SevenZipSetCompressionMethod(Arch: I7zOutArchive; method: T7zCompressionMethod);
 begin
-  Arch.SetPropertie('0', SevCompressionMethod[method]);
+//  Arch.SetPropertie('0', SevCompressionMethod[method]);
+	SetStringProperty(arch,'0',SevCompressionMethod[method]); // CAL - 08/06/2026
 end;
 
 procedure SevenZipSetBindInfo(Arch: I7zOutArchive; const bind: UnicodeString);
 begin
-  arch.SetPropertie('B', bind);
+//  arch.SetPropertie('B', bind);
+	SetStringProperty(arch,'B',bind);				// CAL - 08/06/2026
 end;
 
 procedure SevenZipSetSolidSettings(Arch: I7zOutArchive; solid: boolean);
@@ -1552,7 +1634,11 @@ type
     FProgressCallback: T7zProgressCallback;
     FProgressSender: Pointer;
     FPassword: UnicodeString;
+    FPropNames : array of UnicodeString;  // CAL - 08/06/2026
+    FPropValues: array of TPropVariant;   // CAL - 08/06/2026
     function GetOutArchive: IOutArchive;
+    procedure AddProperty(const Name: UnicodeString; const Value: TPropVariant);  // CAL - 08/06/2026
+    procedure ApplyProperties;            // CAL - 08/06/2026
   protected
     // I7zOutArchive
     procedure AddStream(Stream: TStream; Ownership: TStreamOwnership;
@@ -1565,7 +1651,8 @@ type
     procedure SetProgressCallback(sender: Pointer; callback: T7zProgressCallback); stdcall;
     procedure ClearBatch; stdcall;
     procedure SetPassword(const password: UnicodeString); stdcall;
-    procedure SetPropertie(name: UnicodeString; value: OleVariant); stdcall;
+//    procedure SetPropertie(name: UnicodeString; value: OleVariant); stdcall;
+    procedure SetPropertie(name: UnicodeString; const value: TPropVariant); stdcall;  // CAL - 08/06/2026
     // IProgress
     function SetTotal(total: UInt64): HRESULT; stdcall;
     function SetCompleted(completeValue: PUInt64): HRESULT; stdcall;
@@ -1606,13 +1693,13 @@ var
   FileType : string;
 begin
   FileType := GetFileTypeFromExtension(AFileType);
-  if SameText(FileType, 'zip') then
+  if SameText(FileType, 'zip') or SameText(FileType, 'cbz') then        // CAL - 08/06/2026
     Result := sevenzip.CreateInArchive(CLSID_CFormatZip, lib)
-  else if SameText(FileType, '7z') then
+  else if SameText(FileType, '7z') or SameText(FileType, 'cb7') then    // CAL - 08/06/2026
     Result := sevenzip.CreateInArchive(CLSID_CFormat7z, lib)
-  else if SameText(FileType, 'rar') then
+  else if SameText(FileType, 'rar') or SameText(FileType, 'cbr') then   // CAL - 08/06/2026
     Result := sevenzip.CreateInArchive(CLSID_CFormatRar, lib)
-  else if SameText(FileType, 'bzip2') then
+  else if SameText(FileType, 'bzip2') or SameText(FileType, 'bz2') then // CAL - 08/06/2026
     Result := sevenzip.CreateInArchive(CLSID_CFormatBZ2, lib)
   else if SameText(FileType, 'tar') then
     Result := sevenzip.CreateInArchive(CLSID_CFormatTar, lib)
@@ -1636,6 +1723,10 @@ begin
     Result := sevenzip.CreateInArchive(CLSID_CFormatChm, lib)
   else if SameText(FileType, 'nsis') then
     Result := sevenzip.CreateInArchive(CLSID_CFormatNsis, lib)
+  else if SameText(FileType, 'xz') then			// CAL - 08/06/2026
+    Result := sevenzip.CreateInArchive(CLSID_CFormatXz, lib)
+  else if SameText(FileType, '001') then			// CAL - 08/06/2026
+	 Result := sevenzip.CreateInArchive(CLSID_CFormatSplit, lib)
   else
     raise Exception.Create('Unsupported file type: ' + FileType);
 end;
@@ -1646,13 +1737,13 @@ var
   FileType : string;
 begin
   FileType := GetFileTypeFromExtension(AFileType);
-  if SameText(FileType, 'zip') then
+  if SameText(FileType, 'zip') or SameText(FileType, 'cbz') then        // CAL - 08/06/2026
     Result := sevenzip.CreateOutArchive(CLSID_CFormatZip, lib)
-  else if SameText(FileType, '7z') then
+  else if SameText(FileType, '7z') or SameText(FileType, 'cb7') then    // CAL - 08/06/2026
     Result := sevenzip.CreateOutArchive(CLSID_CFormat7z, lib)
-  else if SameText(FileType, 'rar') then
+  else if SameText(FileType, 'rar') or SameText(FileType, 'cbr') then   // CAL - 08/06/2026
     Result := sevenzip.CreateOutArchive(CLSID_CFormatRar, lib)
-  else if SameText(FileType, 'bzip2') then
+  else if SameText(FileType, 'bzip2') or SameText(FileType, 'bz2') then // CAL - 08/06/2026
     Result := sevenzip.CreateOutArchive(CLSID_CFormatBZ2, lib)
   else if SameText(FileType, 'tar') then
     Result := sevenzip.CreateOutArchive(CLSID_CFormatTar, lib)
@@ -1690,6 +1781,8 @@ begin
     Result := sevenzip.CreateOutArchive(CLSID_CFormatChm, lib)
   else if SameText(FileType, 'nsis') then
     Result := sevenzip.CreateOutArchive(CLSID_CFormatNsis, lib)
+  else if SameText(FileType, 'xz') then			// CAL - 08/06/2026
+    Result := sevenzip.CreateOutArchive(CLSID_CFormatXz, lib)
   else
     raise Exception.Create('Unsupported file type: ' + AFileType);
 end;
@@ -2502,6 +2595,8 @@ begin
   FBatchList := TObjectList.Create;
   FProgressCallback := nil;
   FProgressSender := nil;
+  SetLength(FPropNames, 0);							// CAL - 08/06/2026
+  SetLength(FPropValues, 0);						// CAL - 08/06/2026
 end;
 
 function T7zOutArchive.CryptoGetTextPassword2(passwordIsDefined: PInt32;
@@ -2532,9 +2627,16 @@ begin
 end;
 
 destructor T7zOutArchive.Destroy;
+var i:integer;
 begin
-  FOutArchive := nil;
-  FBatchList.Free;
+	FOutArchive := nil;
+	FBatchList.Free;
+	// CAL - 08/06/2026 (begin)
+	for i:=0 to High(FPropValues) do
+		 PropVariantClear(FPropValues[I]);
+	SetLength(FPropNames, 0);
+	SetLength(FPropValues, 0);
+	// CAL - 08/06/2026 (end)
   inherited;
 end;
 
@@ -2660,14 +2762,16 @@ end;
 
 procedure T7zOutArchive.SaveToStream(stream: TStream);
 var
-  strm: ISequentialOutStream;
+	strm: ISequentialOutStream;
 begin
-  strm := T7zStream.Create(stream);
-  try
-    RINOK(OutArchive.UpdateItems(strm, FBatchList.Count, self as IArchiveUpdateCallback));
-  finally
-    strm := nil;
-  end;
+	strm := T7zStream.Create(stream);
+	try
+		// Apply all properties at once:
+		ApplyProperties;										// CAL - 08/06/2026
+		RINOK(OutArchive.UpdateItems(strm, FBatchList.Count, self as IArchiveUpdateCallback));
+	finally
+		strm := nil;
+	end;
 end;
 
 function T7zOutArchive.SetCompleted(completeValue: PUInt64): HRESULT;
@@ -2705,8 +2809,10 @@ begin
   FProgressSender := sender;
 end;
 
-procedure T7zOutArchive.SetPropertie(name: UnicodeString;
-  value: OleVariant);
+{ -----------------------------------------------------------------------------
+ Original function
+-----------------------------------------------------------------------------
+procedure T7zOutArchive.SetPropertie(name: UnicodeString; value: OleVariant);
 var
   intf: ISetProperties;
   p: PWideChar;
@@ -2714,6 +2820,56 @@ begin
   intf := OutArchive as ISetProperties;
   p := PWideChar(name);
   RINOK(intf.SetProperties(@p, @TPropVariant(value), 1));
+end;
+}
+
+{ -----------------------------------------------------------------------------
+ 08/06/2026 - CAL
+ New SetPropertie function
+ -> ApplyProperties to see where the original code migrated and changed
+----------------------------------------------------------------------------- }
+procedure T7zOutArchive.SetPropertie(name: UnicodeString; const value: TPropVariant);
+begin
+	AddProperty(name, value);
+end;
+
+{ -----------------------------------------------------------------------------
+ 08/06/2026  CAL
+ Add a property to the list
+----------------------------------------------------------------------------- }
+procedure T7zOutArchive.AddProperty(const Name: UnicodeString; const Value: TPropVariant);
+var
+	N: Integer;
+begin
+	N := Length(FPropNames);
+	SetLength(FPropNames, N + 1);
+	SetLength(FPropValues, N + 1);
+	FPropNames[N] := Name;
+	FPropValues[N] := Value;
+end;
+
+{ -----------------------------------------------------------------------------
+ 08/06/2026  CAL
+ Applies all properties at once
+----------------------------------------------------------------------------- }
+procedure T7zOutArchive.ApplyProperties;
+var
+	Intf: ISetProperties;
+	Names: array of PWideChar;
+	i: Integer;
+begin
+	if Length(FPropNames) = 0 then
+		Exit;
+	Intf := OutArchive as ISetProperties;
+	SetLength(Names, Length(FPropNames));
+	for i:=0 to High(FPropNames) do
+		Names[I] := PWideChar(FPropNames[I]);
+	RINOK(Intf.SetProperties(@Names[0], @FPropValues[0], Length(FPropNames)));
+	// Important! Clean memory:
+	for i:=0 to High(FPropValues) do
+		PropVariantClear(FPropValues[I]);
+	SetLength(FPropNames, 0);
+	SetLength(FPropValues, 0);
 end;
 
 function T7zOutArchive.SetTotal(total: UInt64): HRESULT;
